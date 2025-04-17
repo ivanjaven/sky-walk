@@ -4,9 +4,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -18,7 +21,6 @@ import com.example.skywalk.features.encyclopedia.presentation.viewmodel.Encyclop
 import com.example.skywalk.features.encyclopedia.presentation.screens.EncyclopediaScreen
 import com.example.skywalk.features.encyclopedia.presentation.screens.EncyclopediaDetailScreen
 import com.example.skywalk.features.encyclopedia.domain.models.CelestialObject
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.skywalk.features.placeholder.presentation.screens.PlaceholderScreen
 
 @Composable
@@ -34,7 +36,7 @@ fun MainScreen() {
         BottomNavItem(
             name = "Encyclopedia",
             route = "encyclopedia",
-            icon = Icons.Filled.Info  // Changed from Book to Info
+            icon = Icons.Filled.Info
         ),
         BottomNavItem(
             name = "AR Sky",
@@ -45,7 +47,7 @@ fun MainScreen() {
         BottomNavItem(
             name = "Events",
             route = "events",
-            icon = Icons.Filled.DateRange  // Changed from Event to DateRange
+            icon = Icons.Filled.DateRange
         ),
         BottomNavItem(
             name = "Profile",
@@ -61,14 +63,8 @@ fun MainScreen() {
                 navController = navController,
                 onItemClick = {
                     navController.navigate(it.route) {
-                        // Avoid multiple copies of the same destination when
-                        // reselecting the same item
                         launchSingleTop = true
-                        // Restore state when reselecting a previously selected item
                         restoreState = true
-
-                        // Pop up to the start destination to
-                        // avoid building up a large stack of destinations
                         popUpTo(navController.graph.startDestinationId) {
                             saveState = true
                         }
@@ -97,12 +93,19 @@ fun NavigationGraph(
         composable("home") {
             HomeScreen()
         }
+
         composable("encyclopedia") {
             val viewModel = viewModel<EncyclopediaViewModel>()
+
+            // Ensure data is loaded when entering this screen
+            LaunchedEffect(Unit) {
+                viewModel.loadInitialDataIfNeeded()
+            }
+
             EncyclopediaScreen(
                 viewModel = viewModel,
                 onNavigateToDetail = { celestialObject ->
-                    // Save the object in a temporary location or pass key parameters
+                    // Store the object in saved state
                     navController.currentBackStackEntry?.savedStateHandle?.set(
                         "celestialObject",
                         celestialObject
@@ -116,19 +119,33 @@ fun NavigationGraph(
             val viewModel = viewModel<EncyclopediaViewModel>()
             val celestialObject = navController.previousBackStackEntry?.savedStateHandle?.get<CelestialObject>("celestialObject")
 
+            // Set navigating back flag when leaving this screen
+            DisposableEffect(Unit) {
+                onDispose {
+                    viewModel.setNavigatingBack(true)
+                }
+            }
+
             celestialObject?.let {
                 EncyclopediaDetailScreen(
                     celestialObject = it,
-                    onBackPressed = { navController.popBackStack() }
+                    onBackPressed = {
+                        navController.popBackStack()
+                    }
                 )
-            } ?: navController.popBackStack()
+            } ?: Box(contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
         }
+
         composable("ar_sky") {
             PlaceholderScreen(title = "AR Sky Explorer")
         }
+
         composable("events") {
             PlaceholderScreen(title = "Celestial Events")
         }
+
         composable("profile") {
             PlaceholderScreen(title = "Profile")
         }

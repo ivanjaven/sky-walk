@@ -1,5 +1,9 @@
 package com.example.skywalk.features.encyclopedia.domain.models
 
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
+
+@Parcelize
 data class CelestialObject(
     val id: String,
     val title: String,
@@ -9,9 +13,10 @@ data class CelestialObject(
     val type: CelestialObjectType,
     val keywords: List<String>,
     val source: String
-)
+) : Parcelable
 
-enum class CelestialObjectType {
+@Parcelize
+enum class CelestialObjectType : Parcelable {
     PLANET,
     STAR,
     GALAXY,

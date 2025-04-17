@@ -25,11 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.example.skywalk.features.encyclopedia.domain.models.CelestialObject
-import com.example.skywalk.features.encyclopedia.domain.models.CelestialObjectType
 import com.example.skywalk.features.encyclopedia.presentation.components.CategoryChip
 import com.example.skywalk.features.encyclopedia.presentation.components.CelestialObjectCard
 import com.example.skywalk.features.encyclopedia.presentation.components.FeaturedObjectCard
@@ -41,16 +37,34 @@ import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EncyclopediaScreen(
-    viewModel: EncyclopediaViewModel = viewModel(),
+    viewModel: EncyclopediaViewModel,
     onNavigateToDetail: (CelestialObject) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val navigatingBack by viewModel.navigatingBack.collectAsState()
 
     var isRefreshing by remember { mutableStateOf(false) }
 
+    // Handle back navigation restoration
+    LaunchedEffect(navigatingBack) {
+        if (navigatingBack) {
+            viewModel.setNavigatingBack(false)
+            // Ensure data is loaded when returning
+            val currentCategory = selectedCategory
+            if (currentCategory != null) {
+                viewModel.loadObjectsByCategory(currentCategory)
+            } else if (searchQuery.isNotEmpty()) {
+                viewModel.search(searchQuery)
+            } else {
+                viewModel.loadFeaturedObjects()
+            }
+        }
+    }
+
+    // Handle refresh
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
             viewModel.refreshData()

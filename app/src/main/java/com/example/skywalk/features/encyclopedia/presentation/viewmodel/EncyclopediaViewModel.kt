@@ -39,14 +39,36 @@ class EncyclopediaViewModel(application: Application) : AndroidViewModel(applica
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
 
+    // Navigation state management
+    private val _navigatingBack = MutableStateFlow(false)
+    val navigatingBack: StateFlow<Boolean> = _navigatingBack
+
+    // Tracking if initial data has been loaded
+    private var hasLoadedInitialData = false
+
     init {
-        loadCategories()
-        loadFeaturedObjects()
+        loadInitialDataIfNeeded()
+    }
+
+    fun setNavigatingBack(isNavigatingBack: Boolean) {
+        _navigatingBack.value = isNavigatingBack
+    }
+
+    fun loadInitialDataIfNeeded() {
+        if (!hasLoadedInitialData) {
+            loadCategories()
+            loadFeaturedObjects()
+            hasLoadedInitialData = true
+        }
     }
 
     private fun loadCategories() {
         viewModelScope.launch {
-            _categories.value = getCategoriesUseCase()
+            try {
+                _categories.value = getCategoriesUseCase()
+            } catch (e: Exception) {
+                // Handle error (optional)
+            }
         }
     }
 
@@ -106,6 +128,26 @@ class EncyclopediaViewModel(application: Application) : AndroidViewModel(applica
                 search(_searchQuery.value)
             } else {
                 loadFeaturedObjects()
+            }
+        }
+    }
+
+    fun getCelestialObjectById(id: String, callback: (CelestialObject?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                // Get current list of objects
+                val currentState = _uiState.value
+                if (currentState is EncyclopediaUiState.Success) {
+                    // Find the object in the current list
+                    val foundObject = currentState.celestialObjects.find { it.id == id }
+                    callback(foundObject)
+                } else {
+                    // If not found or not loaded, try to load it from repository
+                    // This would require a new use case or repository method in a real app
+                    callback(null)
+                }
+            } catch (e: Exception) {
+                callback(null)
             }
         }
     }
