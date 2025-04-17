@@ -14,6 +14,11 @@ import androidx.navigation.compose.rememberNavController
 import com.example.skywalk.core.navigation.BottomNavItem
 import com.example.skywalk.core.ui.components.BottomNavigationBar
 import com.example.skywalk.features.home.presentation.screens.HomeScreen
+import com.example.skywalk.features.encyclopedia.presentation.viewmodel.EncyclopediaViewModel
+import com.example.skywalk.features.encyclopedia.presentation.screens.EncyclopediaScreen
+import com.example.skywalk.features.encyclopedia.presentation.screens.EncyclopediaDetailScreen
+import com.example.skywalk.features.encyclopedia.domain.models.CelestialObject
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.skywalk.features.placeholder.presentation.screens.PlaceholderScreen
 
 @Composable
@@ -93,7 +98,30 @@ fun NavigationGraph(
             HomeScreen()
         }
         composable("encyclopedia") {
-            PlaceholderScreen(title = "Encyclopedia")
+            val viewModel = viewModel<EncyclopediaViewModel>()
+            EncyclopediaScreen(
+                viewModel = viewModel,
+                onNavigateToDetail = { celestialObject ->
+                    // Save the object in a temporary location or pass key parameters
+                    navController.currentBackStackEntry?.savedStateHandle?.set(
+                        "celestialObject",
+                        celestialObject
+                    )
+                    navController.navigate("encyclopedia/detail")
+                }
+            )
+        }
+
+        composable("encyclopedia/detail") {
+            val viewModel = viewModel<EncyclopediaViewModel>()
+            val celestialObject = navController.previousBackStackEntry?.savedStateHandle?.get<CelestialObject>("celestialObject")
+
+            celestialObject?.let {
+                EncyclopediaDetailScreen(
+                    celestialObject = it,
+                    onBackPressed = { navController.popBackStack() }
+                )
+            } ?: navController.popBackStack()
         }
         composable("ar_sky") {
             PlaceholderScreen(title = "AR Sky Explorer")
