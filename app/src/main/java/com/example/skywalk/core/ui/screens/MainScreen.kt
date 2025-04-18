@@ -16,15 +16,19 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.skywalk.core.navigation.BottomNavItem
 import com.example.skywalk.core.ui.components.BottomNavigationBar
-import com.example.skywalk.features.home.presentation.screens.HomeScreen
-import com.example.skywalk.features.encyclopedia.presentation.viewmodel.EncyclopediaViewModel
-import com.example.skywalk.features.encyclopedia.presentation.screens.EncyclopediaScreen
-import com.example.skywalk.features.encyclopedia.presentation.screens.EncyclopediaDetailScreen
+import com.example.skywalk.features.auth.presentation.screens.ProfileScreen
+import com.example.skywalk.features.auth.presentation.viewmodel.AuthViewModel
 import com.example.skywalk.features.encyclopedia.domain.models.CelestialObject
+import com.example.skywalk.features.encyclopedia.presentation.screens.EncyclopediaDetailScreen
+import com.example.skywalk.features.encyclopedia.presentation.screens.EncyclopediaScreen
+import com.example.skywalk.features.encyclopedia.presentation.viewmodel.EncyclopediaViewModel
+import com.example.skywalk.features.home.presentation.screens.HomeScreen
 import com.example.skywalk.features.placeholder.presentation.screens.PlaceholderScreen
 
 @Composable
-fun MainScreen() {
+fun MainScreen(
+    onSignOut: () -> Unit
+) {
     val navController = rememberNavController()
 
     val bottomNavItems = listOf(
@@ -75,7 +79,8 @@ fun MainScreen() {
     ) { innerPadding ->
         NavigationGraph(
             navController = navController,
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.padding(innerPadding),
+            onSignOut = onSignOut
         )
     }
 }
@@ -83,7 +88,8 @@ fun MainScreen() {
 @Composable
 fun NavigationGraph(
     navController: NavHostController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSignOut: () -> Unit
 ) {
     NavHost(
         navController = navController,
@@ -147,7 +153,11 @@ fun NavigationGraph(
         }
 
         composable("profile") {
-            PlaceholderScreen(title = "Profile")
+            val authViewModel = viewModel<AuthViewModel>()
+            ProfileScreen(
+                viewModel = authViewModel,
+                onSignOut = onSignOut
+            )
         }
     }
 }
