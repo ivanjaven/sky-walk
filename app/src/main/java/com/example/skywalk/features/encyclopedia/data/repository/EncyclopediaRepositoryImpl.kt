@@ -14,6 +14,30 @@ class EncyclopediaRepositoryImpl(private val context: Context) : EncyclopediaRep
     private val cacheManager = EncyclopediaCacheManager(context)
     private val firestoreService = FirestoreService()
 
+    override suspend fun getAllCelestialObjects(): Flow<List<CelestialObject>> = flow {
+        // First emit from cache if available
+        cacheManager.getCachedAllObjects()?.let { cachedData ->
+            emit(cachedData)
+        }
+
+        // Check if cache is expired
+        if (cacheManager.isCacheExpired(EncyclopediaCacheManager.KEY_ALL)) {
+            try {
+                val objects = firestoreService.getAllCelestialObjects()
+                    .sortedBy { it.name }
+
+                // Cache the new data
+                cacheManager.cacheAllObjects(objects)
+
+                // Emit fresh data
+                emit(objects)
+            } catch (e: Exception) {
+                Timber.e(e, "Error fetching all objects")
+                // Error handling - just use cache in this case
+            }
+        }
+    }
+
     override suspend fun getFeaturedCelestialObjects(): Flow<List<CelestialObject>> = flow {
         // First emit from cache if available
         cacheManager.getCachedFeaturedObjects()?.let { cachedData ->

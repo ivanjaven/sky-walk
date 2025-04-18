@@ -19,26 +19,38 @@ private val LightColorScheme = lightColorScheme(
     onPrimaryContainer = SpaceBlue,
     secondary = CosmicPurple,
     onSecondary = Color.White,
-    background = BackgroundLight,
+    secondaryContainer = CosmicPurple.copy(alpha = 0.1f),
+    onSecondaryContainer = CosmicPurple,
+    tertiary = StarYellow,
+    onTertiary = Color.Black,
+    tertiaryContainer = StarYellow.copy(alpha = 0.1f),
+    onTertiaryContainer = Color(0xFF6F5500),
+    background = Color.White,
     onBackground = TextPrimaryLight,
-    surface = SurfaceLight,
+    surface = Color.White,
     onSurface = TextPrimaryLight,
-    surfaceVariant = MoonGray,
+    surfaceVariant = Color(0xFFF5F5F5),
     onSurfaceVariant = TextSecondaryLight
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = SpaceBlue,
-    onPrimary = Color.White,
-    primaryContainer = SpaceBlue.copy(alpha = 0.2f),
-    onPrimaryContainer = Color.White,
-    secondary = CosmicPurple,
-    onSecondary = Color.White,
-    background = BackgroundDark,
+    primary = Color(0xFF4FC3F7),  // Lighter blue for better contrast in dark mode
+    onPrimary = Color.Black,
+    primaryContainer = Color(0xFF0D47A1).copy(alpha = 0.5f),
+    onPrimaryContainer = Color(0xFFB3E5FC),
+    secondary = Color(0xFFCE93D8),  // Lighter purple for dark mode
+    onSecondary = Color.Black,
+    secondaryContainer = Color(0xFF6A1B9A).copy(alpha = 0.5f),
+    onSecondaryContainer = Color(0xFFE1BEE7),
+    tertiary = StarYellow,
+    onTertiary = Color.Black,
+    tertiaryContainer = Color(0xFF795548).copy(alpha = 0.5f),
+    onTertiaryContainer = Color(0xFFFFE082),
+    background = SurfaceDark,
     onBackground = TextPrimaryDark,
     surface = SurfaceDark,
     onSurface = TextPrimaryDark,
-    surfaceVariant = Color(0xFF252525),
+    surfaceVariant = SurfaceDarkElevated,
     onSurfaceVariant = TextSecondaryDark
 )
 
@@ -47,6 +59,7 @@ fun SkyWalkTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
+    // Use dark theme by default for the space app
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
     val view = LocalView.current

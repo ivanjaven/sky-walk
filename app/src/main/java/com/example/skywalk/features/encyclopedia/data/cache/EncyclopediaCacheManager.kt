@@ -14,6 +14,25 @@ class EncyclopediaCacheManager(private val context: Context) {
         PREF_NAME, Context.MODE_PRIVATE
     )
 
+    // Cache all objects
+    fun cacheAllObjects(data: List<CelestialObject>) {
+        preferences.edit {
+            putString(KEY_ALL_DATA, gson.toJson(data))
+            putLong(KEY_ALL_TIMESTAMP, System.currentTimeMillis())
+        }
+    }
+
+    // Get cached all objects
+    fun getCachedAllObjects(): List<CelestialObject>? {
+        val json = preferences.getString(KEY_ALL_DATA, null) ?: return null
+        return try {
+            val type = object : TypeToken<List<CelestialObject>>() {}.type
+            gson.fromJson(json, type)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     // Cache featured objects
     fun cacheFeaturedObjects(data: List<CelestialObject>) {
         preferences.edit {
@@ -74,6 +93,7 @@ class EncyclopediaCacheManager(private val context: Context) {
     // Check if cache is expired
     fun isCacheExpired(key: String, expirationMs: Long = CACHE_EXPIRATION): Boolean {
         val timestamp = when {
+            key == KEY_ALL -> preferences.getLong(KEY_ALL_TIMESTAMP, 0)
             key == KEY_FEATURED -> preferences.getLong(KEY_FEATURED_TIMESTAMP, 0)
             key.startsWith(KEY_SEARCH) -> {
                 val query = key.removePrefix(KEY_SEARCH)
@@ -95,6 +115,8 @@ class EncyclopediaCacheManager(private val context: Context) {
 
     companion object {
         private const val PREF_NAME = "encyclopedia_cache"
+        private const val KEY_ALL_DATA = "all_data"
+        private const val KEY_ALL_TIMESTAMP = "all_timestamp"
         private const val KEY_FEATURED_DATA = "featured_data"
         private const val KEY_FEATURED_TIMESTAMP = "featured_timestamp"
         private const val KEY_SEARCH_PREFIX = "search_"
@@ -102,6 +124,7 @@ class EncyclopediaCacheManager(private val context: Context) {
         private const val KEY_CATEGORY_PREFIX = "category_"
         private const val KEY_CATEGORY_TIMESTAMP_PREFIX = "category_timestamp_"
 
+        const val KEY_ALL = "all"
         const val KEY_FEATURED = "featured"
         const val KEY_SEARCH = "search_"
         const val KEY_CATEGORY = "category_"

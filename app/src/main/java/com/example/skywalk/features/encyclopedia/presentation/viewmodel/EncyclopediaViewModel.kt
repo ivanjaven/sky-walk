@@ -7,6 +7,7 @@ import com.example.skywalk.features.encyclopedia.data.repository.EncyclopediaRep
 import com.example.skywalk.features.encyclopedia.domain.models.CelestialObject
 import com.example.skywalk.features.encyclopedia.domain.usecases.GetCategoriesUseCase
 import com.example.skywalk.features.encyclopedia.domain.usecases.GetCelestialObjectsByCategoryUseCase
+import com.example.skywalk.features.encyclopedia.domain.usecases.GetAllCelestialObjectsUseCase
 import com.example.skywalk.features.encyclopedia.domain.usecases.GetFeaturedCelestialObjectsUseCase
 import com.example.skywalk.features.encyclopedia.domain.usecases.SearchCelestialObjectsUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +20,7 @@ class EncyclopediaViewModel(application: Application) : AndroidViewModel(applica
     // Repository and use cases (without DI for simplicity)
     private val repository = EncyclopediaRepositoryImpl(application)
     private val getFeaturedCelestialObjectsUseCase = GetFeaturedCelestialObjectsUseCase(repository)
+    private val getAllCelestialObjectsUseCase = GetAllCelestialObjectsUseCase(repository)
     private val getCelestialObjectsByCategoryUseCase = GetCelestialObjectsByCategoryUseCase(repository)
     private val searchCelestialObjectsUseCase = SearchCelestialObjectsUseCase(repository)
     private val getCategoriesUseCase = GetCategoriesUseCase(repository)
@@ -57,7 +59,7 @@ class EncyclopediaViewModel(application: Application) : AndroidViewModel(applica
     fun loadInitialDataIfNeeded() {
         if (!hasLoadedInitialData) {
             loadCategories()
-            loadFeaturedObjects()
+            loadAllObjects() // Load all objects by default
             hasLoadedInitialData = true
         }
     }
@@ -69,6 +71,20 @@ class EncyclopediaViewModel(application: Application) : AndroidViewModel(applica
             } catch (e: Exception) {
                 // Handle error (optional)
             }
+        }
+    }
+
+    fun loadAllObjects() {
+        _selectedCategory.value = null
+        viewModelScope.launch {
+            _uiState.value = EncyclopediaUiState.Loading
+            getAllCelestialObjectsUseCase()
+                .catch { e ->
+                    _uiState.value = EncyclopediaUiState.Error(e.message ?: "Unknown error")
+                }
+                .collect { objects ->
+                    _uiState.value = EncyclopediaUiState.Success(objects)
+                }
         }
     }
 
@@ -103,7 +119,7 @@ class EncyclopediaViewModel(application: Application) : AndroidViewModel(applica
         _searchQuery.value = query
 
         if (query.isEmpty()) {
-            loadFeaturedObjects()
+            loadAllObjects()
             return
         }
 
@@ -127,27 +143,7 @@ class EncyclopediaViewModel(application: Application) : AndroidViewModel(applica
             } else if (_searchQuery.value.isNotEmpty()) {
                 search(_searchQuery.value)
             } else {
-                loadFeaturedObjects()
-            }
-        }
-    }
-
-    fun getCelestialObjectById(id: String, callback: (CelestialObject?) -> Unit) {
-        viewModelScope.launch {
-            try {
-                // Get current list of objects
-                val currentState = _uiState.value
-                if (currentState is EncyclopediaUiState.Success) {
-                    // Find the object in the current list
-                    val foundObject = currentState.celestialObjects.find { it.id == id }
-                    callback(foundObject)
-                } else {
-                    // If not found or not loaded, try to load it from repository
-                    // This would require a new use case or repository method in a real app
-                    callback(null)
-                }
-            } catch (e: Exception) {
-                callback(null)
+                loadAllObjects()
             }
         }
     }
