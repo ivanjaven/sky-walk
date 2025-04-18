@@ -3,10 +3,9 @@ package com.example.skywalk.features.encyclopedia.data.cache
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
-import com.example.skywalk.features.encyclopedia.data.models.ApodResponse
-import com.example.skywalk.features.encyclopedia.data.models.NasaImageSearchResponse
+import com.example.skywalk.features.encyclopedia.domain.models.CelestialObject
 import com.google.gson.Gson
-import java.io.File
+import com.google.gson.reflect.TypeToken
 import java.util.concurrent.TimeUnit
 
 class EncyclopediaCacheManager(private val context: Context) {
@@ -15,44 +14,27 @@ class EncyclopediaCacheManager(private val context: Context) {
         PREF_NAME, Context.MODE_PRIVATE
     )
 
-    // Cache APOD data
-    fun cacheApodData(data: List<ApodResponse>) {
+    // Cache featured objects
+    fun cacheFeaturedObjects(data: List<CelestialObject>) {
         preferences.edit {
-            putString(KEY_APOD_DATA, gson.toJson(data))
-            putLong(KEY_APOD_TIMESTAMP, System.currentTimeMillis())
+            putString(KEY_FEATURED_DATA, gson.toJson(data))
+            putLong(KEY_FEATURED_TIMESTAMP, System.currentTimeMillis())
         }
     }
 
-    // Get cached APOD data
-    fun getCachedApodData(): List<ApodResponse>? {
-        val json = preferences.getString(KEY_APOD_DATA, null) ?: return null
+    // Get cached featured objects
+    fun getCachedFeaturedObjects(): List<CelestialObject>? {
+        val json = preferences.getString(KEY_FEATURED_DATA, null) ?: return null
         return try {
-            gson.fromJson(json, Array<ApodResponse>::class.java).toList()
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    // Cache NASA Image Search data
-    fun cacheSearchData(query: String, data: NasaImageSearchResponse) {
-        preferences.edit {
-            putString(KEY_SEARCH_PREFIX + query.lowercase(), gson.toJson(data))
-            putLong(KEY_SEARCH_TIMESTAMP_PREFIX + query.lowercase(), System.currentTimeMillis())
-        }
-    }
-
-    // Get cached search data
-    fun getCachedSearchData(query: String): NasaImageSearchResponse? {
-        val json = preferences.getString(KEY_SEARCH_PREFIX + query.lowercase(), null) ?: return null
-        return try {
-            gson.fromJson(json, NasaImageSearchResponse::class.java)
+            val type = object : TypeToken<List<CelestialObject>>() {}.type
+            gson.fromJson(json, type)
         } catch (e: Exception) {
             null
         }
     }
 
     // Cache category data
-    fun cacheCategoryData(category: String, data: NasaImageSearchResponse) {
+    fun cacheCategoryData(category: String, data: List<CelestialObject>) {
         preferences.edit {
             putString(KEY_CATEGORY_PREFIX + category.lowercase(), gson.toJson(data))
             putLong(KEY_CATEGORY_TIMESTAMP_PREFIX + category.lowercase(), System.currentTimeMillis())
@@ -60,10 +42,30 @@ class EncyclopediaCacheManager(private val context: Context) {
     }
 
     // Get cached category data
-    fun getCachedCategoryData(category: String): NasaImageSearchResponse? {
+    fun getCachedCategoryData(category: String): List<CelestialObject>? {
         val json = preferences.getString(KEY_CATEGORY_PREFIX + category.lowercase(), null) ?: return null
         return try {
-            gson.fromJson(json, NasaImageSearchResponse::class.java)
+            val type = object : TypeToken<List<CelestialObject>>() {}.type
+            gson.fromJson(json, type)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // Cache search results
+    fun cacheSearchResults(query: String, data: List<CelestialObject>) {
+        preferences.edit {
+            putString(KEY_SEARCH_PREFIX + query.lowercase(), gson.toJson(data))
+            putLong(KEY_SEARCH_TIMESTAMP_PREFIX + query.lowercase(), System.currentTimeMillis())
+        }
+    }
+
+    // Get cached search results
+    fun getCachedSearchResults(query: String): List<CelestialObject>? {
+        val json = preferences.getString(KEY_SEARCH_PREFIX + query.lowercase(), null) ?: return null
+        return try {
+            val type = object : TypeToken<List<CelestialObject>>() {}.type
+            gson.fromJson(json, type)
         } catch (e: Exception) {
             null
         }
@@ -72,7 +74,7 @@ class EncyclopediaCacheManager(private val context: Context) {
     // Check if cache is expired
     fun isCacheExpired(key: String, expirationMs: Long = CACHE_EXPIRATION): Boolean {
         val timestamp = when {
-            key == KEY_APOD -> preferences.getLong(KEY_APOD_TIMESTAMP, 0)
+            key == KEY_FEATURED -> preferences.getLong(KEY_FEATURED_TIMESTAMP, 0)
             key.startsWith(KEY_SEARCH) -> {
                 val query = key.removePrefix(KEY_SEARCH)
                 preferences.getLong(KEY_SEARCH_TIMESTAMP_PREFIX + query.lowercase(), 0)
@@ -89,19 +91,18 @@ class EncyclopediaCacheManager(private val context: Context) {
     // Clear all cached data
     fun clearAllCache() {
         preferences.edit { clear() }
-        context.cacheDir.deleteRecursively()
     }
 
     companion object {
         private const val PREF_NAME = "encyclopedia_cache"
-        private const val KEY_APOD_DATA = "apod_data"
-        private const val KEY_APOD_TIMESTAMP = "apod_timestamp"
+        private const val KEY_FEATURED_DATA = "featured_data"
+        private const val KEY_FEATURED_TIMESTAMP = "featured_timestamp"
         private const val KEY_SEARCH_PREFIX = "search_"
         private const val KEY_SEARCH_TIMESTAMP_PREFIX = "search_timestamp_"
         private const val KEY_CATEGORY_PREFIX = "category_"
         private const val KEY_CATEGORY_TIMESTAMP_PREFIX = "category_timestamp_"
 
-        const val KEY_APOD = "apod"
+        const val KEY_FEATURED = "featured"
         const val KEY_SEARCH = "search_"
         const val KEY_CATEGORY = "category_"
 

@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -27,19 +28,19 @@ fun FeaturedObjectCard(
     Card(
         modifier = Modifier
             .width(280.dp)
-            .height(200.dp)
+            .height(220.dp)
             .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.medium,
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Background image
+            // Background image - use thumbnailUrl if available, otherwise imageUrl
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(celestialObject.imageUrl)
+                    .data(celestialObject.thumbnailUrl.ifEmpty { celestialObject.imageUrl })
                     .crossfade(true)
                     .build(),
-                contentDescription = celestialObject.title,
+                contentDescription = celestialObject.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
@@ -74,6 +75,24 @@ fun FeaturedObjectCard(
                 )
             }
 
+            // Magnitude badge (if available)
+            celestialObject.visibility?.magnitude?.let { magnitude ->
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .padding(12.dp)
+                        .align(Alignment.TopEnd)
+                ) {
+                    Text(
+                        text = "Mag: ${String.format("%.1f", magnitude)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
             // Content
             Column(
                 modifier = Modifier
@@ -81,9 +100,9 @@ fun FeaturedObjectCard(
                     .padding(12.dp),
                 verticalArrangement = Arrangement.Bottom
             ) {
-                // Object title
+                // Object name
                 Text(
-                    text = celestialObject.title,
+                    text = celestialObject.name,
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
@@ -93,9 +112,11 @@ fun FeaturedObjectCard(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Description preview
+                // Summary or description preview
                 Text(
-                    text = celestialObject.description.take(60) + if (celestialObject.description.length > 60) "..." else "",
+                    text = celestialObject.summary.ifEmpty {
+                        celestialObject.description.take(60) + if (celestialObject.description.length > 60) "..." else ""
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.8f),
                     maxLines = 2,

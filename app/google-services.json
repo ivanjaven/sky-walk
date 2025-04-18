@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "817901674665",
+    "firebase_url": "https://skywalk-admin-4f1a5-default-rtdb.firebaseio.com",
+    "project_id": "skywalk-admin-4f1a5",
+    "storage_bucket": "skywalk-admin-4f1a5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:817901674665:android:2fc3984af3d7f0b22009b8",
+        "android_client_info": {
+          "package_name": "com.example.skywalk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAWxvOPEadHa2HikxEzwZOqSntuDrO-VEQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

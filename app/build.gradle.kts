@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("kotlin-kapt")
     id("kotlin-parcelize")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -117,4 +118,12 @@ dependencies {
     // SwipeRefresh for pull-to-refresh functionality
     implementation("com.google.accompanist:accompanist-swiperefresh:0.32.0")
 
+    // Firebase
+    implementation(platform("com.google.firebase:firebase-bom:32.7.2"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-firestore-ktx")
+    implementation("com.google.firebase:firebase-storage-ktx")
+
+    // Timber for logging
+    implementation("com.jakewharton.timber:timber:5.0.1")
 }

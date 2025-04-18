@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -31,13 +32,13 @@ fun CelestialObjectCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Background image
+            // Background image - prefer thumbnailUrl
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(celestialObject.imageUrl)
+                    .data(celestialObject.thumbnailUrl.ifEmpty { celestialObject.imageUrl })
                     .crossfade(true)
                     .build(),
-                contentDescription = celestialObject.title,
+                contentDescription = celestialObject.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
@@ -56,6 +57,22 @@ fun CelestialObjectCard(
                     )
             )
 
+            // Type badge
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier
+                    .padding(8.dp)
+                    .align(Alignment.TopStart)
+            ) {
+                Text(
+                    text = celestialObject.type.name.replace("_", " "),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+
             // Content
             Column(
                 modifier = Modifier
@@ -63,9 +80,9 @@ fun CelestialObjectCard(
                     .padding(12.dp),
                 verticalArrangement = Arrangement.Bottom
             ) {
-                // Object title
+                // Object name
                 Text(
-                    text = celestialObject.title,
+                    text = celestialObject.name,
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
@@ -75,14 +92,35 @@ fun CelestialObjectCard(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Object type
-                Text(
-                    text = celestialObject.type.name.replace("_", " "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.8f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                // Short description or visibility info
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (celestialObject.visibility?.isVisibleToNakedEye == true) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
+                            contentColor = MaterialTheme.colorScheme.onSecondary,
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Text(
+                                text = "Visible to eye",
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+
+                    Text(
+                        text = celestialObject.summary.ifEmpty {
+                            celestialObject.properties?.distance?.let { "Distance: $it" } ?: ""
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.8f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
