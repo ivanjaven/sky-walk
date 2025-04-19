@@ -47,6 +47,10 @@ class SocialMediaRepositoryImpl : SocialMediaRepository {
         return firebaseSocialService.getComments(postId)
     }
 
+    override suspend fun getCommentsBatch(postId: String, limit: Int, lastCommentId: String?): Result<List<Comment>> {
+        return firebaseSocialService.getCommentsBatch(postId, limit, lastCommentId)
+    }
+
     override suspend fun addComment(postId: String, content: String): Result<Comment> {
         return firebaseSocialService.addComment(postId, content)
     }

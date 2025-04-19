@@ -32,6 +32,8 @@ import coil.request.ImageRequest
 import com.example.skywalk.R
 import com.example.skywalk.features.socialmedia.domain.models.Comment
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.Date
@@ -47,8 +49,11 @@ fun FullscreenCommentDialog(
     formatTimestamp: (Date) -> String,
     currentUserPhotoUrl: String? = null,
     isLoadingComments: Boolean = false,
+    isLoadingMoreComments: Boolean = false,
+    hasMoreComments: Boolean = true,
     commentError: String? = null,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onLoadMore: () -> Unit = {}
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -62,18 +67,41 @@ fun FullscreenCommentDialog(
     // Log the comments for debugging
     LaunchedEffect(comments) {
         Timber.d("Comments in dialog: ${comments.size}")
-        comments.forEachIndexed { index, comment ->
-            Timber.d("Comment $index: ${comment.id} by ${comment.userName}: ${comment.content}")
-        }
     }
 
-    // When comments change, scroll to bottom
+    // When comments change, scroll to bottom if it's a new comment
     LaunchedEffect(comments.size) {
-        Timber.d("Comments changed, size: ${comments.size}")
-        if (comments.isNotEmpty()) {
+        if (comments.isNotEmpty() && !isLoadingMoreComments) {
             delay(100) // Small delay to allow list to update
             lazyListState.animateScrollToItem(comments.size - 1)
         }
+    }
+
+    // Detect scrolling to load more comments
+    LaunchedEffect(lazyListState) {
+        snapshotFlow {
+            val layoutInfo = lazyListState.layoutInfo
+            val visibleItemsInfo = layoutInfo.visibleItemsInfo
+            if (visibleItemsInfo.isEmpty()) {
+                false
+            } else {
+                val lastVisibleItem = visibleItemsInfo.last()
+                val viewportHeight = layoutInfo.viewportEndOffset + layoutInfo.viewportStartOffset
+
+                // Check if we're close to the end and should load more
+                (lastVisibleItem.index >= layoutInfo.totalItemsCount - 3) &&
+                        hasMoreComments &&
+                        !isLoadingMoreComments &&
+                        !isLoadingComments
+            }
+        }
+            .distinctUntilChanged()
+            .collectLatest { shouldLoadMore ->
+                if (shouldLoadMore) {
+                    Timber.d("Reached near end of comments list, loading more...")
+                    onLoadMore()
+                }
+            }
     }
 
     // Reset expanded state if comment content becomes empty (e.g., after sending)
@@ -149,8 +177,8 @@ fun FullscreenCommentDialog(
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
-                    if (isLoadingComments) {
-                        // Loading indicator
+                    if (isLoadingComments && comments.isEmpty()) {
+                        // Initial loading indicator (full screen)
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
@@ -175,7 +203,6 @@ fun FullscreenCommentDialog(
                         }
                     } else {
                         // Comments list
-                        Timber.d("Rendering ${comments.size} comments")
                         LazyColumn(
                             state = lazyListState,
                             modifier = Modifier.fillMaxSize(),
@@ -190,6 +217,23 @@ fun FullscreenCommentDialog(
                                     timeAgo = formatTimestamp(comment.createdAt),
                                     modifier = Modifier.padding(bottom = 16.dp)
                                 )
+                            }
+
+                            // Loading indicator at the bottom when loading more
+                            if (isLoadingMoreComments) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -266,8 +310,8 @@ fun FullscreenCommentDialog(
                                     onSendComment()
                                     coroutineScope.launch {
                                         // Scroll to bottom after sending
+                                        delay(100)
                                         if (comments.isNotEmpty()) {
-                                            delay(100)
                                             lazyListState.animateScrollToItem(comments.size)
                                         }
                                     }

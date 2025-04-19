@@ -31,6 +31,12 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     private val unlikePostUseCase = UnlikePostUseCase(repository)
     private val getCommentsUseCase = GetCommentsUseCase(repository)
     private val addCommentUseCase = AddCommentUseCase(repository)
+    private val getCommentsBatchUseCase = GetCommentsBatchUseCase(repository)
+    private val _isLoadingMoreComments = MutableStateFlow(false)
+    val isLoadingMoreComments: StateFlow<Boolean> = _isLoadingMoreComments
+    private val _hasMoreComments = MutableStateFlow(true)
+    val hasMoreComments: StateFlow<Boolean> = _hasMoreComments
+    private val commentBatchSize = 10
 
     // UI states
     private val _uiState = MutableStateFlow<SocialMediaUiState>(SocialMediaUiState.Loading)
@@ -326,50 +332,72 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    // Add this method to SocialMediaViewModel
+    fun loadCommentsBatch(postId: String, refresh: Boolean = false) {
+        if (_isLoadingComments.value || _isLoadingMoreComments.value) return
+
+        val currentComments = if (refresh) emptyList() else _commentsMap.value[postId] ?: emptyList()
+        val lastCommentId = if (refresh || currentComments.isEmpty()) null else currentComments.lastOrNull()?.id
+
+        Timber.d("Loading comments batch for post $postId, refresh: $refresh, lastCommentId: $lastCommentId")
+
+        if (refresh) {
+            _isLoadingComments.value = true
+            _hasMoreComments.value = true
+        } else {
+            _isLoadingMoreComments.value = true
+        }
+
+        viewModelScope.launch {
+            try {
+                val result = getCommentsBatchUseCase(postId, commentBatchSize, lastCommentId)
+
+                result.fold(
+                    onSuccess = { newComments ->
+                        Timber.d("Loaded ${newComments.size} comments in batch")
+
+                        _commentsMap.update { currentMap ->
+                            val newMap = currentMap.toMutableMap()
+                            if (refresh) {
+                                newMap[postId] = newComments
+                            } else {
+                                val combinedComments = (currentComments + newComments).distinctBy { it.id }
+                                newMap[postId] = combinedComments
+                            }
+                            newMap
+                        }
+
+                        // Check if we have more comments to load
+                        _hasMoreComments.value = newComments.size == commentBatchSize
+
+                        if (refresh) _isLoadingComments.value = false
+                        else _isLoadingMoreComments.value = false
+                    },
+                    onFailure = { error ->
+                        Timber.e(error, "Error loading comments batch: ${error.message}")
+                        _commentError.value = "Failed to load comments. Please try again."
+                        if (refresh) _isLoadingComments.value = false
+                        else _isLoadingMoreComments.value = false
+                    }
+                )
+            } catch (e: Exception) {
+                Timber.e(e, "Exception loading comments batch: ${e.message}")
+                _commentError.value = "Failed to load comments. Please try again."
+                if (refresh) _isLoadingComments.value = false
+                else _isLoadingMoreComments.value = false
+            }
+        }
+    }
+
     fun loadComments(postId: String) {
         Timber.d("Loading comments for post $postId")
         _selectedPostId.value = postId
         _showCommentsSheet.value = true
         _commentContent.value = "" // Clear previous comment
-        _isLoadingComments.value = true
         _commentError.value = null
 
-        viewModelScope.launch {
-            try {
-                // Show loading state for comments
-                _commentsMap.update { currentMap ->
-                    val newMap = currentMap.toMutableMap()
-                    // If no comments are cached yet, put an empty list to show loading state
-                    if (!newMap.containsKey(postId)) {
-                        newMap[postId] = emptyList()
-                    }
-                    newMap
-                }
-
-                getCommentsUseCase(postId)
-                    .catch { e ->
-                        Timber.e(e, "Error in comment flow: ${e.message}")
-                        _isLoadingComments.value = false
-                        _commentError.value = "Failed to load comments. Please try again."
-                    }
-                    .collect { loadedComments ->
-                        Timber.d("Received ${loadedComments.size} comments for post $postId: $loadedComments")
-
-                        // Store comments in map indexed by postId
-                        _commentsMap.update { currentMap ->
-                            val newMap = currentMap.toMutableMap()
-                            newMap[postId] = loadedComments
-                            newMap
-                        }
-
-                        _isLoadingComments.value = false
-                    }
-            } catch (e: Exception) {
-                Timber.e(e, "Exception in loadComments: ${e.message}")
-                _isLoadingComments.value = false
-                _commentError.value = "Failed to load comments. Please try again."
-            }
-        }
+        // Load first batch with refresh = true
+        loadCommentsBatch(postId, true)
     }
 
     fun hideCommentsSheet() {

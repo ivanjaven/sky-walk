@@ -298,6 +298,70 @@ class FirebaseSocialService {
         awaitClose { listener.remove() }
     }
 
+    suspend fun getCommentsBatch(postId: String, limit: Int = 10, lastCommentId: String? = null): Result<List<Comment>> {
+        return try {
+            Timber.d("Getting comments batch for postId: $postId, lastCommentId: $lastCommentId")
+
+            // Get the post to access its commentIds
+            val postDoc = postsCollection.document(postId).get().await()
+            if (!postDoc.exists()) {
+                Timber.e("Post $postId not found")
+                return Result.success(emptyList())
+            }
+
+            // Extract commentIds from the post
+            @Suppress("UNCHECKED_CAST")
+            val allCommentIds = postDoc.get("commentIds") as? List<String> ?: emptyList()
+            Timber.d("Found ${allCommentIds.size} total commentIds for post $postId")
+
+            if (allCommentIds.isEmpty()) {
+                return Result.success(emptyList())
+            }
+
+            // Calculate which commentIds to load in this batch
+            val startIndex = if (lastCommentId != null) {
+                allCommentIds.indexOf(lastCommentId).takeIf { it >= 0 }?.plus(1) ?: 0
+            } else {
+                0
+            }
+
+            val endIndex = (startIndex + limit).coerceAtMost(allCommentIds.size)
+            val batchCommentIds = allCommentIds.subList(startIndex, endIndex)
+
+            if (batchCommentIds.isEmpty()) {
+                return Result.success(emptyList())
+            }
+
+            Timber.d("Loading batch comments: $startIndex to $endIndex of ${allCommentIds.size}")
+
+            // Fetch the batch of comments
+            val commentsSnapshot = commentsCollection
+                .whereIn(FieldPath.documentId(), batchCommentIds)
+                .get()
+                .await()
+
+            // Parse and order comments according to commentIds order
+            val commentsMap = commentsSnapshot.documents.mapNotNull { doc ->
+                try {
+                    val comment = parseCommentDocument(doc, postId)
+                    comment.id to comment
+                } catch (e: Exception) {
+                    Timber.e(e, "Error parsing comment: ${e.message}")
+                    null
+                }
+            }.toMap()
+
+            // Create list in the same order as commentIds
+            val orderedComments = batchCommentIds.mapNotNull { commentsMap[it] }
+
+            Timber.d("Loaded ${orderedComments.size} comments in batch")
+            Result.success(orderedComments)
+        } catch (e: Exception) {
+            Timber.e(e, "Error loading comment batch: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
     // Update the getComments method
     suspend fun getComments(postId: String): Flow<List<Comment>> = callbackFlow {
         Timber.d("Starting getComments flow for postId: $postId")

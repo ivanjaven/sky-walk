@@ -21,6 +21,7 @@ interface SocialMediaRepository {
 
     // Comments
     suspend fun getComments(postId: String): Flow<List<Comment>>
+    suspend fun getCommentsBatch(postId: String, limit: Int = 10, lastCommentId: String? = null): Result<List<Comment>>
     suspend fun addComment(postId: String, content: String): Result<Comment>
     suspend fun deleteComment(commentId: String): Result<Unit>
 }

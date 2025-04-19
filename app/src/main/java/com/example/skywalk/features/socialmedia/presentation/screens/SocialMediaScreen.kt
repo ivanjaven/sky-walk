@@ -87,8 +87,15 @@ fun SocialMediaScreen(
             formatTimestamp = viewModel::formatTimestamp,
             currentUserPhotoUrl = currentUser?.photoUrl,
             isLoadingComments = isLoadingComments,
+            isLoadingMoreComments = viewModel.isLoadingMoreComments.collectAsState().value,
+            hasMoreComments = viewModel.hasMoreComments.collectAsState().value,
             commentError = commentError,
-            onDismiss = { viewModel.hideCommentsSheet() }
+            onDismiss = { viewModel.hideCommentsSheet() },
+            onLoadMore = {
+                if (selectedPostId != null) {
+                    viewModel.loadCommentsBatch(selectedPostId!!, false)
+                }
+            }
         )
     }
 
