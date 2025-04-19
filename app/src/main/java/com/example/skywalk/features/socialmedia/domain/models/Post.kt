@@ -15,5 +15,6 @@ data class Post(
     val likeCount: Int = 0,
     val commentCount: Int = 0,
     val isLikedByCurrentUser: Boolean = false,
-    val likeUsernames: List<String> = emptyList()
+    val likeUsernames: List<String> = emptyList(),
+    val likeUserIds: List<String> = emptyList()
 )

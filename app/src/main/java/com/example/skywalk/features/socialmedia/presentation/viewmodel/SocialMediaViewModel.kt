@@ -33,6 +33,10 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     private val _uiState = MutableStateFlow<SocialMediaUiState>(SocialMediaUiState.Loading)
     val uiState: StateFlow<SocialMediaUiState> = _uiState
 
+    // Pull-to-refresh state
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing
+
     // Posts state
     private val _posts = MutableStateFlow<List<Post>>(emptyList())
     val posts: StateFlow<List<Post>> = _posts
@@ -47,28 +51,28 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     private val _isSubmitting = MutableStateFlow(false)
     val isSubmitting: StateFlow<Boolean> = _isSubmitting
 
-    // Comments for selected post
+    // Comments state - Map of postId to comments
+    private val _commentsMap = MutableStateFlow<Map<String, List<Comment>>>(emptyMap())
+    val commentsMap: StateFlow<Map<String, List<Comment>>> = _commentsMap
+
+    // Selected post for comments
     private val _selectedPostId = MutableStateFlow<String?>(null)
     val selectedPostId: StateFlow<String?> = _selectedPostId
 
-    private val _comments = MutableStateFlow<List<Comment>>(emptyList())
-    val comments: StateFlow<List<Comment>> = _comments
-
+    // Comment text input
     private val _commentContent = MutableStateFlow("")
     val commentContent: StateFlow<String> = _commentContent
 
     // Selected image for fullscreen view
-    private val _selectedImageUrl = MutableStateFlow<String?>(null)
-    val selectedImageUrl: StateFlow<String?> = _selectedImageUrl
+    private val _selectedImageUrls = MutableStateFlow<List<String>?>(null)
+    val selectedImageUrls: StateFlow<List<String>?> = _selectedImageUrls
+
+    private val _selectedImageIndex = MutableStateFlow(0)
+    val selectedImageIndex: StateFlow<Int> = _selectedImageIndex
 
     // Bottom sheet states
     private val _showCommentsSheet = MutableStateFlow(false)
     val showCommentsSheet: StateFlow<Boolean> = _showCommentsSheet
-
-    // Pagination and loading state
-    private var lastPostId: String? = null
-    private var isLoading = false
-    private var hasMorePosts = true
 
     // End of feed message
     private val _showNoMorePostsMessage = MutableStateFlow(false)
@@ -77,16 +81,39 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     // Track if a post like operation is in progress to prevent multiple clicks
     private val likeOperationsMap = mutableMapOf<String, Boolean>()
 
+    // Pagination and loading state
+    private var lastPostId: String? = null
+    private var isLoading = false
+    private var hasMorePosts = true
+
+    // Post successfully created
+    private val _postCreationSuccess = MutableStateFlow(false)
+    val postCreationSuccess: StateFlow<Boolean> = _postCreationSuccess
+
     init {
         loadInitialPosts()
     }
 
+    fun refresh() {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            loadInitialPosts()
+            _isRefreshing.value = false
+        }
+    }
+
+    fun clearPostCreationSuccess() {
+        _postCreationSuccess.value = false
+    }
+
     fun loadInitialPosts() {
-        if (isLoading) return
+        if (isLoading && !_isRefreshing.value) return
 
         viewModelScope.launch {
             isLoading = true
-            _uiState.value = SocialMediaUiState.Loading
+            if (!_isRefreshing.value) {
+                _uiState.value = SocialMediaUiState.Loading
+            }
             _showNoMorePostsMessage.value = false
 
             try {
@@ -213,12 +240,12 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
 
                 result.fold(
                     onSuccess = { post ->
-                        // We'll let the user manually refresh instead of adding the post
-                        // to the list immediately to avoid automatic content shifting
-
                         // Clear form
                         _postContent.value = ""
                         _postImages.value = emptyList()
+
+                        // Signal post creation success for UI feedback
+                        _postCreationSuccess.value = true
                     },
                     onFailure = { error ->
                         Timber.e(error, "Error creating post")
@@ -276,9 +303,14 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
 
         if (postIndex != -1) {
             val post = currentPosts[postIndex]
+
+            // Just update the isLikedByCurrentUser flag and the like count
+            // The actual likeUserIds and likeUsernames will be updated from the server
             val updatedPost = post.copy(
                 isLikedByCurrentUser = isLiked,
-                likeCount = if (isLiked) post.likeCount + 1 else (post.likeCount - 1).coerceAtLeast(0)
+                likeCount = if (isLiked) post.likeCount + 1 else (post.likeCount - 1).coerceAtLeast(
+                    0
+                )
             )
             currentPosts[postIndex] = updatedPost
             _posts.value = currentPosts
@@ -288,6 +320,7 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     fun loadComments(postId: String) {
         _selectedPostId.value = postId
         _showCommentsSheet.value = true
+        _commentContent.value = "" // Clear previous comment
 
         viewModelScope.launch {
             try {
@@ -296,7 +329,12 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                         Timber.e(e, "Error loading comments")
                     }
                     .collect { loadedComments ->
-                        _comments.value = loadedComments
+                        // Store comments in map indexed by postId
+                        _commentsMap.update { currentMap ->
+                            val newMap = currentMap.toMutableMap()
+                            newMap[postId] = loadedComments
+                            newMap
+                        }
                     }
             } catch (e: Exception) {
                 Timber.e(e, "Error loading comments")
@@ -326,11 +364,16 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                 val result = addCommentUseCase(postId, content)
 
                 result.fold(
-                    onSuccess = { comment ->
-                        // Add comment to the list immediately for better UX
-                        val currentComments = _comments.value.toMutableList()
-                        currentComments.add(comment)
-                        _comments.value = currentComments
+                    onSuccess = { newComment ->
+                        // Add new comment to the map
+                        _commentsMap.update { currentMap ->
+                            val currentComments = currentMap[postId]?.toMutableList() ?: mutableListOf()
+                            currentComments.add(newComment)
+
+                            val newMap = currentMap.toMutableMap()
+                            newMap[postId] = currentComments
+                            newMap
+                        }
 
                         // Update comment count on the post
                         updatePostCommentCount(postId, 1)
@@ -362,8 +405,17 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun setSelectedImage(imageUrl: String?) {
-        _selectedImageUrl.value = imageUrl
+    fun setSelectedImages(imageUrls: List<String>, initialIndex: Int) {
+        _selectedImageUrls.value = imageUrls
+        _selectedImageIndex.value = initialIndex
+    }
+
+    fun clearSelectedImages() {
+        _selectedImageUrls.value = null
+    }
+
+    fun getCommentsForPost(postId: String): List<Comment> {
+        return _commentsMap.value[postId] ?: emptyList()
     }
 
     fun formatTimestamp(date: Date): String {

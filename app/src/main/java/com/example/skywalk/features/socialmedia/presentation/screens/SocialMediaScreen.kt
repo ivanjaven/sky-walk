@@ -1,33 +1,24 @@
 // com/example/skywalk/features/socialmedia/presentation/screens/SocialMediaScreen.kt
 package com.example.skywalk.features.socialmedia.presentation.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import coil.compose.AsyncImage
-import com.example.skywalk.R
 import com.example.skywalk.features.auth.domain.models.User
 import com.example.skywalk.features.socialmedia.presentation.components.*
 import com.example.skywalk.features.socialmedia.presentation.viewmodel.SocialMediaUiState
 import com.example.skywalk.features.socialmedia.presentation.viewmodel.SocialMediaViewModel
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,17 +33,27 @@ fun SocialMediaScreen(
     val postImages by viewModel.postImages.collectAsState()
     val isSubmitting by viewModel.isSubmitting.collectAsState()
     val selectedPostId by viewModel.selectedPostId.collectAsState()
-    val comments by viewModel.comments.collectAsState()
+    val commentsMap by viewModel.commentsMap.collectAsState()
     val commentContent by viewModel.commentContent.collectAsState()
     val showCommentsSheet by viewModel.showCommentsSheet.collectAsState()
-    val selectedImageUrl by viewModel.selectedImageUrl.collectAsState()
+    val selectedImageUrls by viewModel.selectedImageUrls.collectAsState()
+    val selectedImageIndex by viewModel.selectedImageIndex.collectAsState()
     val showNoMorePostsMessage by viewModel.showNoMorePostsMessage.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val postCreationSuccess by viewModel.postCreationSuccess.collectAsState()
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-
-    // Bottom sheet state
     val sheetState = rememberModalBottomSheetState()
+
+    // Handle post creation success
+    LaunchedEffect(postCreationSuccess) {
+        if (postCreationSuccess) {
+            // Show success message and trigger refresh
+            viewModel.refresh()
+            viewModel.clearPostCreationSuccess()
+        }
+    }
 
     // Load more posts when scrolled to the bottom
     val shouldLoadMore = remember {
@@ -73,13 +74,16 @@ fun SocialMediaScreen(
     }
 
     // Comments bottom sheet
-    if (showCommentsSheet) {
+    if (showCommentsSheet && selectedPostId != null) {
         ModalBottomSheet(
             onDismissRequest = { viewModel.hideCommentsSheet() },
             sheetState = sheetState
         ) {
+            val currentPostComments = commentsMap[selectedPostId] ?: emptyList()
+
             CommentBottomSheet(
-                comments = comments,
+                postId = selectedPostId!!,
+                comments = currentPostComments,
                 commentContent = commentContent,
                 onCommentContentChange = viewModel::setCommentContent,
                 onSendComment = {
@@ -93,10 +97,11 @@ fun SocialMediaScreen(
     }
 
     // Fullscreen image viewer
-    if (selectedImageUrl != null) {
+    if (selectedImageUrls != null) {
         FullscreenImageViewer(
-            imageUrl = selectedImageUrl!!,
-            onDismiss = { viewModel.setSelectedImage(null) }
+            imageUrls = selectedImageUrls!!,
+            initialPage = selectedImageIndex,
+            onDismiss = { viewModel.clearSelectedImages() }
         )
     }
 
@@ -132,9 +137,9 @@ fun SocialMediaScreen(
             }
 
             is SocialMediaUiState.Success -> {
-                SwipeToRefreshLayout(
-                    onRefresh = { viewModel.loadInitialPosts() },
-                    refreshing = posts.isEmpty() && uiState is SocialMediaUiState.Loading
+                SwipeRefresh(
+                    state = rememberSwipeRefreshState(isRefreshing),
+                    onRefresh = { viewModel.refresh() }
                 ) {
                     LazyColumn(
                         state = listState,
@@ -166,8 +171,8 @@ fun SocialMediaScreen(
                                         viewModel.loadComments(post.id)
                                     }
                                 },
-                                onImageClick = { imageUrl ->
-                                    viewModel.setSelectedImage(imageUrl)
+                                onImageClick = { imageUrls, initialIndex ->
+                                    viewModel.setSelectedImages(imageUrls, initialIndex)
                                 },
                                 onMoreClick = { /* Handle more options */ }
                             )
@@ -187,40 +192,12 @@ fun SocialMediaScreen(
 }
 
 @Composable
-fun SwipeToRefreshLayout(
-    onRefresh: () -> Unit,
-    refreshing: Boolean,
-    content: @Composable () -> Unit
-) {
-    // Simple implementation - you can replace with a proper library like accompanist-swiperefresh
-    Box(modifier = Modifier.fillMaxSize()) {
-        content()
-
-        if (refreshing) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(60.dp)
-                    .align(Alignment.TopCenter)
-                    .background(MaterialTheme.colorScheme.surface),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(30.dp),
-                    strokeWidth = 2.dp
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun SpaceEndMessage() {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer
         )
@@ -246,69 +223,6 @@ fun SpaceEndMessage() {
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-            )
-        }
-    }
-}
-
-@Composable
-fun FullscreenImageViewer(
-    imageUrl: String,
-    onDismiss: () -> Unit
-) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true,
-            usePlatformDefaultWidth = false
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-                .clickable(onClick = onDismiss)
-        ) {
-            AsyncImageWithZoom(
-                imageUrl = imageUrl,
-                onDismiss = onDismiss
-            )
-        }
-    }
-}
-
-@Composable
-fun AsyncImageWithZoom(
-    imageUrl: String,
-    onDismiss: () -> Unit
-) {
-    Box(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        // Image with zooming would go here
-        // For simplicity, using a basic implementation
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = "Fullscreen image",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit
-        )
-
-        // Close button
-        IconButton(
-            onClick = onDismiss,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(16.dp)
-                .size(48.dp)
-                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_close),
-                contentDescription = "Close",
-                tint = Color.White,
-                modifier = Modifier.size(24.dp)
             )
         }
     }

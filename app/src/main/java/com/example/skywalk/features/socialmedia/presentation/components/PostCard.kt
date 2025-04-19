@@ -1,7 +1,6 @@
 // com/example/skywalk/features/socialmedia/presentation/components/PostCard.kt
 package com.example.skywalk.features.socialmedia.presentation.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -29,7 +28,7 @@ fun PostCard(
     timeAgo: String,
     onLikeClick: () -> Unit,
     onCommentClick: () -> Unit,
-    onImageClick: (String) -> Unit,
+    onImageClick: (List<String>, Int) -> Unit,
     onMoreClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -142,10 +141,27 @@ fun PostCard(
             Spacer(modifier = Modifier.weight(1f))
         }
 
-        // Like count
+        // Like count with "You" text for current user
         if (post.likeCount > 0) {
+            val likeText = buildString {
+                if (post.isLikedByCurrentUser) {
+                    append("Liked by You")
+                    if (post.likeCount > 1) {
+                        val otherLikes = post.likeCount - 1
+                        append(" and $otherLikes ${if (otherLikes == 1) "other" else "others"}")
+                    }
+                } else if (post.likeUsernames.isNotEmpty()) {
+                    append("Liked by ${post.likeUsernames.joinToString(" and ")}")
+                    if (post.likeCount > post.likeUsernames.size) {
+                        append(" and others")
+                    }
+                } else {
+                    append("${post.likeCount} ${if (post.likeCount == 1) "like" else "likes"}")
+                }
+            }
+
             Text(
-                text = "Liked by ${if (post.likeUsernames.isNotEmpty()) post.likeUsernames.joinToString(" and ") else ""} ${if (post.likeUsernames.isNotEmpty() && post.likeCount > post.likeUsernames.size) "and others" else if (post.likeUsernames.isEmpty()) "${post.likeCount} others" else ""}",
+                text = likeText,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp)
@@ -173,113 +189,5 @@ fun PostCard(
         )
 
         Divider(color = MaterialTheme.colorScheme.surfaceVariant, thickness = 0.5.dp)
-    }
-}
-
-@Composable
-fun ImageCarousel(
-    imageUrls: List<String>,
-    onImageClick: (String) -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-    ) {
-        // If only one image, just show it directly
-        if (imageUrls.size == 1) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(imageUrls[0])
-                    .crossfade(true)
-                    .build(),
-                contentDescription = "Post image",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable { onImageClick(imageUrls[0]) },
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            // For multiple images, implement a simple manual carousel
-            var currentPage by remember { mutableStateOf(0) }
-
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(imageUrls[currentPage])
-                    .crossfade(true)
-                    .build(),
-                contentDescription = "Post image",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable { onImageClick(imageUrls[currentPage]) },
-                contentScale = ContentScale.Crop
-            )
-
-            // Left/Right navigation buttons
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.Center),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                if (currentPage > 0) {
-                    IconButton(
-                        onClick = { currentPage-- },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.3f))
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_arrow_left),
-                            contentDescription = "Previous image",
-                            tint = Color.White
-                        )
-                    }
-                } else {
-                    Spacer(modifier = Modifier.size(40.dp))
-                }
-
-                if (currentPage < imageUrls.size - 1) {
-                    IconButton(
-                        onClick = { currentPage++ },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.3f))
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_arrow_right),
-                            contentDescription = "Next image",
-                            tint = Color.White
-                        )
-                    }
-                } else {
-                    Spacer(modifier = Modifier.size(40.dp))
-                }
-            }
-
-            // Image indicators
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-                    .align(Alignment.BottomCenter),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                repeat(imageUrls.size) { index ->
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 4.dp)
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (currentPage == index) Color.White
-                                else Color.White.copy(alpha = 0.5f)
-                            )
-                    )
-                }
-            }
-        }
     }
 }
