@@ -18,6 +18,9 @@ import com.example.skywalk.core.navigation.BottomNavItem
 import com.example.skywalk.core.ui.components.BottomNavigationBar
 import com.example.skywalk.features.auth.presentation.screens.ProfileScreen
 import com.example.skywalk.features.auth.presentation.viewmodel.AuthViewModel
+import com.example.skywalk.features.chat.presentation.screens.ChatListScreen
+import com.example.skywalk.features.chat.presentation.screens.ChatRoomScreen
+import com.example.skywalk.features.chat.presentation.viewmodel.ChatListViewModel
 import com.example.skywalk.features.encyclopedia.domain.models.CelestialObject
 import com.example.skywalk.features.encyclopedia.presentation.screens.EncyclopediaDetailScreen
 import com.example.skywalk.features.encyclopedia.presentation.screens.EncyclopediaScreen
@@ -48,10 +51,16 @@ fun MainScreen(
             icon = Icons.Filled.Star,
             isMainAction = true
         ),
+//        BottomNavItem(
+//            name = "Events",
+//            route = "events",
+//            icon = Icons.Filled.DateRange
+//        ),
         BottomNavItem(
-            name = "Events",
-            route = "events",
-            icon = Icons.Filled.DateRange
+            name = "Chat",
+            route = "chat",
+            icon = Icons.Filled.Email,
+//            badgeCount = totalUnreadCount
         ),
         BottomNavItem(
             name = "Profile",
@@ -158,6 +167,39 @@ fun NavigationGraph(
                 viewModel = authViewModel,
                 onSignOut = onSignOut
             )
+        }
+
+        composable("chat") {
+            val chatListViewModel = viewModel<ChatListViewModel>()
+            ChatListScreen(
+                onNavigateToChatRoom = { chatRoomId, otherUserId ->
+                    navController.currentBackStackEntry?.savedStateHandle?.set("chatRoomId", chatRoomId)
+                    navController.currentBackStackEntry?.savedStateHandle?.set("otherUserId", otherUserId)
+                    navController.navigate("chat_room")
+                },
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                viewModel = chatListViewModel
+            )
+        }
+
+        composable("chat_room") {
+            val chatRoomId = navController.previousBackStackEntry?.savedStateHandle?.get<String>("chatRoomId")
+            val otherUserId = navController.previousBackStackEntry?.savedStateHandle?.get<String>("otherUserId")
+
+            if (chatRoomId != null && otherUserId != null) {
+                ChatRoomScreen(
+                    chatRoomId = chatRoomId,
+                    otherUserId = otherUserId,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            } else {
+                // Handle invalid state
+                navController.popBackStack()
+            }
         }
     }
 }
