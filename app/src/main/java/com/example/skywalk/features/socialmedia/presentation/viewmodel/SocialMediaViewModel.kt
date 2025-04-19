@@ -65,22 +65,29 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     private val _showCommentsSheet = MutableStateFlow(false)
     val showCommentsSheet: StateFlow<Boolean> = _showCommentsSheet
 
-    // Track if a post like operation is in progress to prevent multiple clicks
-    private val likeOperationInProgress = mutableMapOf<String, Boolean>()
-
-    // Pagination
+    // Pagination and loading state
     private var lastPostId: String? = null
     private var isLoading = false
     private var hasMorePosts = true
+
+    // End of feed message
+    private val _showNoMorePostsMessage = MutableStateFlow(false)
+    val showNoMorePostsMessage: StateFlow<Boolean> = _showNoMorePostsMessage
+
+    // Track if a post like operation is in progress to prevent multiple clicks
+    private val likeOperationsMap = mutableMapOf<String, Boolean>()
 
     init {
         loadInitialPosts()
     }
 
     fun loadInitialPosts() {
+        if (isLoading) return
+
         viewModelScope.launch {
             isLoading = true
             _uiState.value = SocialMediaUiState.Loading
+            _showNoMorePostsMessage.value = false
 
             try {
                 lastPostId = null
@@ -100,6 +107,9 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                         }
 
                         hasMorePosts = loadedPosts.size >= POST_PAGE_SIZE
+                        if (!hasMorePosts) {
+                            _showNoMorePostsMessage.value = true
+                        }
                         isLoading = false
                     }
 
@@ -133,6 +143,9 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                         }
 
                         hasMorePosts = loadedPosts.size >= POST_PAGE_SIZE
+                        if (!hasMorePosts) {
+                            _showNoMorePostsMessage.value = true
+                        }
                         isLoading = false
                     }
 
@@ -167,7 +180,7 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
         val content = _postContent.value.trim()
         val imageUris = _postImages.value
 
-        if (content.isEmpty() && imageUris.isEmpty()) {
+        if ((content.isEmpty() && imageUris.isEmpty()) || isSubmitting.value) {
             return
         }
 
@@ -176,19 +189,23 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
 
             try {
                 // Convert Uris to Files
-                val imageFiles = imageUris.mapNotNull { uri ->
-                    val context = getApplication<Application>()
+                val imageFiles = mutableListOf<File>()
+
+                for (uri in imageUris) {
                     try {
-                        val tempFile = File(context.cacheDir, "temp_image_${System.currentTimeMillis()}_${uri.lastPathSegment}.jpg")
+                        val context = getApplication<Application>()
+                        val tempFile = File(context.cacheDir, "temp_image_${System.currentTimeMillis()}_${uri.lastPathSegment ?: "unknown"}.jpg")
+
                         context.contentResolver.openInputStream(uri)?.use { input ->
                             tempFile.outputStream().use { output ->
                                 input.copyTo(output)
                             }
                         }
-                        tempFile
+
+                        imageFiles.add(tempFile)
                     } catch (e: Exception) {
                         Timber.e(e, "Error converting URI to file: $uri")
-                        null
+                        // Continue with other images
                     }
                 }
 
@@ -196,10 +213,8 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
 
                 result.fold(
                     onSuccess = { post ->
-                        // Add the new post to the list
-                        val currentPosts = _posts.value.toMutableList()
-                        currentPosts.add(0, post)
-                        _posts.value = currentPosts
+                        // We'll let the user manually refresh instead of adding the post
+                        // to the list immediately to avoid automatic content shifting
 
                         // Clear form
                         _postContent.value = ""
@@ -207,12 +222,12 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                     },
                     onFailure = { error ->
                         Timber.e(error, "Error creating post")
-                        _uiState.value = SocialMediaUiState.Error("Failed to create post: ${error.message}")
+                        _uiState.value = SocialMediaUiState.Error("Failed to create post. Please try again.")
                     }
                 )
             } catch (e: Exception) {
                 Timber.e(e, "Error creating post")
-                _uiState.value = SocialMediaUiState.Error("Failed to create post: ${e.message}")
+                _uiState.value = SocialMediaUiState.Error("Failed to create post. Please try again.")
             } finally {
                 _isSubmitting.value = false
             }
@@ -220,15 +235,15 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun toggleLike(postId: String, isLiked: Boolean) {
-        // Check if operation already in progress for this post
-        if (likeOperationInProgress[postId] == true) {
+        // Prevent rapid clicking by checking if an operation is already in progress
+        if (likeOperationsMap[postId] == true) {
             return
         }
 
         viewModelScope.launch {
             try {
-                // Mark operation as in progress
-                likeOperationInProgress[postId] = true
+                // Mark operation as in progress for this specific post
+                likeOperationsMap[postId] = true
 
                 // Optimistically update the UI
                 updatePostLikeStatus(postId, !isLiked)
@@ -249,8 +264,8 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                 updatePostLikeStatus(postId, isLiked)
                 Timber.e(e, "Error toggling like")
             } finally {
-                // Mark operation as complete
-                likeOperationInProgress[postId] = false
+                // Clear the operation status
+                likeOperationsMap[postId] = false
             }
         }
     }
@@ -291,6 +306,7 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
 
     fun hideCommentsSheet() {
         _showCommentsSheet.value = false
+        _commentContent.value = "" // Clear comment field when closing
     }
 
     fun setCommentContent(content: String) {

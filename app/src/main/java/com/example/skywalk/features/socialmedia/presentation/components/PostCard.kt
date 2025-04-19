@@ -22,8 +22,6 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.skywalk.R
 import com.example.skywalk.features.socialmedia.domain.models.Post
-//import com.google.accompanist.pager.PagerState
-//import com.google.accompanist.pager.rememberPagerState
 
 @Composable
 fun PostCard(
@@ -89,17 +87,32 @@ fun PostCard(
             }
         }
 
+        // Post content
+        if (post.content.isNotEmpty()) {
+            Text(
+                text = post.content,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+
         // Post images
         post.imageUrls?.let { imageUrls ->
             if (imageUrls.isNotEmpty()) {
-                ImageCarousel(
-                    imageUrls = imageUrls,
-                    onImageClick = onImageClick
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = if (post.content.isEmpty()) 0.dp else 8.dp)
+                ) {
+                    ImageCarousel(
+                        imageUrls = imageUrls,
+                        onImageClick = onImageClick
+                    )
+                }
             }
         }
 
-        // Action buttons
+        // Action buttons - Always show below content/image
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -126,23 +139,7 @@ fun PostCard(
                 )
             }
 
-            // Share button
-            IconButton(onClick = { /* Handle share */ }) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_send),
-                    contentDescription = "Share"
-                )
-            }
-
             Spacer(modifier = Modifier.weight(1f))
-
-            // Bookmark button
-            IconButton(onClick = { /* Handle bookmark */ }) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_bookmark_border),
-                    contentDescription = "Save"
-                )
-            }
         }
 
         // Like count
@@ -153,29 +150,6 @@ fun PostCard(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
-        }
-
-        // Post content
-        if (post.content.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = post.userName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(end = 4.dp)
-                )
-
-                Text(
-                    text = post.content,
-                    style = MaterialTheme.typography.bodyMedium,
-                    overflow = TextOverflow.Ellipsis,
-                    maxLines = 3
-                )
-            }
         }
 
         // Preview of comments or timestamp
@@ -241,7 +215,7 @@ fun ImageCarousel(
                 contentScale = ContentScale.Crop
             )
 
-            // Left/Right navigation buttons (optional)
+            // Left/Right navigation buttons
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

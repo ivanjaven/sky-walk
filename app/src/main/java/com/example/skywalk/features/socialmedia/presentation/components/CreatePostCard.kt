@@ -194,7 +194,7 @@ fun CreatePostCard(
                     }
                 }
             } else {
-                // Action row for attaching media
+                // Only show image button
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -205,14 +205,6 @@ fun CreatePostCard(
                         Icon(
                             painter = painterResource(id = R.drawable.ic_image),
                             contentDescription = "Add image",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    IconButton(onClick = { /* Handle emoji picker */ }) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_emoji),
-                            contentDescription = "Add emoji",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
