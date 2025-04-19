@@ -3,6 +3,7 @@ package com.example.skywalk.core.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -24,6 +25,15 @@ fun BottomNavigationBar(
     val backStackEntry = navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry.value?.destination?.route
 
+    // Extract base route for nested routes
+    val processedRoute = currentRoute?.let { route ->
+        when {
+            route.startsWith("chat/room") -> "chat"
+            route.startsWith("encyclopedia/detail") -> "encyclopedia"
+            else -> route
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -44,7 +54,7 @@ fun BottomNavigationBar(
                 } else {
                     NavigationItem(
                         item = item,
-                        isSelected = currentRoute == item.route,
+                        isSelected = processedRoute == item.route,
                         onClick = { onItemClick(item) }
                     )
                 }

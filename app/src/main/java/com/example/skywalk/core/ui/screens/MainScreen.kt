@@ -10,10 +10,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+//import androidx.navigation.findStartDestination
 import com.example.skywalk.core.navigation.BottomNavItem
 import com.example.skywalk.core.ui.components.BottomNavigationBar
 import com.example.skywalk.features.auth.presentation.screens.ProfileScreen
@@ -51,16 +55,10 @@ fun MainScreen(
             icon = Icons.Filled.Star,
             isMainAction = true
         ),
-//        BottomNavItem(
-//            name = "Events",
-//            route = "events",
-//            icon = Icons.Filled.DateRange
-//        ),
         BottomNavItem(
             name = "Chat",
             route = "chat",
             icon = Icons.Filled.Email,
-//            badgeCount = totalUnreadCount
         ),
         BottomNavItem(
             name = "Profile",
@@ -76,11 +74,16 @@ fun MainScreen(
                 navController = navController,
                 onItemClick = {
                     navController.navigate(it.route) {
-                        launchSingleTop = true
-                        restoreState = true
-                        popUpTo(navController.graph.startDestinationId) {
+                        // Pop up to the start destination of the graph to
+                        // avoid building up a large stack of destinations
+                        popUpTo(navController.graph.findStartDestination().id) {
                             saveState = true
                         }
+                        // Avoid multiple copies of the same destination when
+                        // reselecting the same item
+                        launchSingleTop = true
+                        // Restore state when reselecting a previously selected item
+                        restoreState = true
                     }
                 }
             )
@@ -157,10 +160,6 @@ fun NavigationGraph(
             PlaceholderScreen(title = "AR Sky Explorer")
         }
 
-        composable("events") {
-            PlaceholderScreen(title = "Celestial Events")
-        }
-
         composable("profile") {
             val authViewModel = viewModel<AuthViewModel>()
             ProfileScreen(
@@ -173,9 +172,7 @@ fun NavigationGraph(
             val chatListViewModel = viewModel<ChatListViewModel>()
             ChatListScreen(
                 onNavigateToChatRoom = { chatRoomId, otherUserId ->
-                    navController.currentBackStackEntry?.savedStateHandle?.set("chatRoomId", chatRoomId)
-                    navController.currentBackStackEntry?.savedStateHandle?.set("otherUserId", otherUserId)
-                    navController.navigate("chat_room")
+                    navController.navigate("chat/room/$chatRoomId/$otherUserId")
                 },
                 onNavigateBack = {
                     navController.popBackStack()
@@ -184,22 +181,23 @@ fun NavigationGraph(
             )
         }
 
-        composable("chat_room") {
-            val chatRoomId = navController.previousBackStackEntry?.savedStateHandle?.get<String>("chatRoomId")
-            val otherUserId = navController.previousBackStackEntry?.savedStateHandle?.get<String>("otherUserId")
+        composable(
+            route = "chat/room/{chatRoomId}/{otherUserId}",
+            arguments = listOf(
+                navArgument("chatRoomId") { type = NavType.StringType },
+                navArgument("otherUserId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val chatRoomId = backStackEntry.arguments?.getString("chatRoomId") ?: ""
+            val otherUserId = backStackEntry.arguments?.getString("otherUserId") ?: ""
 
-            if (chatRoomId != null && otherUserId != null) {
-                ChatRoomScreen(
-                    chatRoomId = chatRoomId,
-                    otherUserId = otherUserId,
-                    onNavigateBack = {
-                        navController.popBackStack()
-                    }
-                )
-            } else {
-                // Handle invalid state
-                navController.popBackStack()
-            }
+            ChatRoomScreen(
+                chatRoomId = chatRoomId,
+                otherUserId = otherUserId,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
         }
     }
 }
