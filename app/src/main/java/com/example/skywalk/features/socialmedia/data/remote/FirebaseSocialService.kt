@@ -8,6 +8,7 @@ import com.example.skywalk.features.socialmedia.domain.models.Post
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
@@ -128,8 +129,8 @@ class FirebaseSocialService {
                 "createdAt" to timestamp,
                 "likeCount" to 0,
                 "commentCount" to 0,
-                "likeUsernames" to emptyList<String>(),
-                "likeUserIds" to emptyList<String>() // Added likeUserIds field
+                "likes" to emptyMap<String, String>(), // Using a map for likes
+                "commentIds" to emptyList<String>() // Store comment IDs
             )
 
             // Save post to Firestore
@@ -148,8 +149,8 @@ class FirebaseSocialService {
                 likeCount = 0,
                 commentCount = 0,
                 isLikedByCurrentUser = false,
-                likeUsernames = emptyList(),
-                likeUserIds = emptyList() // Added likeUserIds field
+                likes = emptyMap(),
+                commentIds = emptyList()
             )
 
             Result.success(post)
@@ -168,23 +169,11 @@ class FirebaseSocialService {
         return try {
             val userId = currentUserId ?: return Result.failure(IllegalStateException("User not authenticated"))
 
-            // Check if already liked
-            val existingLike = likesCollection
-                .whereEqualTo("postId", postId)
-                .whereEqualTo("userId", userId)
-                .limit(1)
-                .get()
-                .await()
-
-            if (existingLike.documents.isNotEmpty()) {
-                return Result.success(Unit) // Already liked
-            }
-
             // Get user info for like username display
             val userDoc = usersCollection.document(userId).get().await()
             val userName = userDoc.getString("displayName") ?: "Anonymous"
 
-            // Create a new like
+            // Create a new like document
             val likeId = likesCollection.document().id
             val likeData = hashMapOf(
                 "id" to likeId,
@@ -205,28 +194,20 @@ class FirebaseSocialService {
 
                 val currentLikeCount = post.getLong("likeCount") ?: 0
 
-                // Get current like usernames
-                val likeUsernames = post.get("likeUsernames") as? List<String> ?: emptyList()
-                val updatedLikeUsernames = likeUsernames.toMutableList()
+                // Get current likes map
+                @Suppress("UNCHECKED_CAST")
+                val likesMap = post.get("likes") as? Map<String, String> ?: emptyMap()
+                val updatedLikesMap = likesMap.toMutableMap()
 
-                // Get current like userIds
-                val likeUserIds = post.get("likeUserIds") as? List<String> ?: emptyList()
-                val updatedLikeUserIds = likeUserIds.toMutableList()
+                // Add user to likes map
+                updatedLikesMap[userId] = userName
 
-                // Add current user to like usernames (max 2 for UI display)
-                if (updatedLikeUsernames.size < 2) {
-                    updatedLikeUsernames.add(userName)
-                }
-
-                // Add current user to like userIds
-                if (!updatedLikeUserIds.contains(userId)) {
-                    updatedLikeUserIds.add(userId)
-                }
-
+                // Create new like document
                 transaction.set(likesCollection.document(likeId), likeData)
+
+                // Update post with new like info
                 transaction.update(postRef, "likeCount", currentLikeCount + 1)
-                transaction.update(postRef, "likeUsernames", updatedLikeUsernames)
-                transaction.update(postRef, "likeUserIds", updatedLikeUserIds)
+                transaction.update(postRef, "likes", updatedLikesMap)
             }.await()
 
             Result.success(Unit)
@@ -253,7 +234,6 @@ class FirebaseSocialService {
             }
 
             val likeDoc = likeQuery.documents[0]
-            val userName = likeDoc.getString("userName") ?: "Anonymous"
 
             // Use a transaction to update both the like and post like count
             db.runTransaction { transaction ->
@@ -266,24 +246,17 @@ class FirebaseSocialService {
 
                 val currentLikeCount = post.getLong("likeCount") ?: 0
 
-                // Get current like usernames
-                val likeUsernames = post.get("likeUsernames") as? List<String> ?: emptyList()
-                val updatedLikeUsernames = likeUsernames.toMutableList()
+                // Get current likes map
+                @Suppress("UNCHECKED_CAST")
+                val likesMap = post.get("likes") as? Map<String, String> ?: emptyMap()
+                val updatedLikesMap = likesMap.toMutableMap()
 
-                // Get current like userIds
-                val likeUserIds = post.get("likeUserIds") as? List<String> ?: emptyList()
-                val updatedLikeUserIds = likeUserIds.toMutableList()
-
-                // Remove current user from like usernames
-                updatedLikeUsernames.remove(userName)
-
-                // Remove current user from like userIds
-                updatedLikeUserIds.remove(userId)
+                // Remove user from likes map
+                updatedLikesMap.remove(userId)
 
                 transaction.delete(likesCollection.document(likeDoc.id))
                 transaction.update(postRef, "likeCount", (currentLikeCount - 1).coerceAtLeast(0))
-                transaction.update(postRef, "likeUsernames", updatedLikeUsernames)
-                transaction.update(postRef, "likeUserIds", updatedLikeUserIds)
+                transaction.update(postRef, "likes", updatedLikesMap)
             }.await()
 
             Result.success(Unit)
@@ -325,40 +298,101 @@ class FirebaseSocialService {
         awaitClose { listener.remove() }
     }
 
+    // Update the getComments method
     suspend fun getComments(postId: String): Flow<List<Comment>> = callbackFlow {
-        val listener = commentsCollection
-            .whereEqualTo("postId", postId)
-            .orderBy("createdAt", Query.Direction.ASCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Timber.e(error, "Error fetching comments")
-                    return@addSnapshotListener
-                }
+        Timber.d("Starting getComments flow for postId: $postId")
+        try {
+            // Send empty list initially to show loading state
+            trySend(emptyList())
 
-                if (snapshot != null) {
-                    val comments = snapshot.documents.mapNotNull { doc ->
-                        try {
-                            Comment(
-                                id = doc.getString("id") ?: doc.id,
-                                postId = doc.getString("postId") ?: "",
-                                userId = doc.getString("userId") ?: "",
-                                userName = doc.getString("userName") ?: "Anonymous",
-                                userPhotoUrl = doc.getString("userPhotoUrl"),
-                                content = doc.getString("content") ?: "",
-                                createdAt = (doc.getTimestamp("createdAt")?.toDate() ?: Date()),
-                                likeCount = doc.getLong("likeCount")?.toInt() ?: 0,
-                                isLikedByCurrentUser = false
-                            )
-                        } catch (e: Exception) {
-                            Timber.e(e, "Error parsing comment document")
-                            null
-                        }
-                    }
-                    trySend(comments)
-                }
+            // Get the post first to access its commentIds
+            val postDoc = postsCollection.document(postId).get().await()
+            if (!postDoc.exists()) {
+                Timber.e("Post $postId not found")
+                trySend(emptyList())
+                awaitClose { }
+                return@callbackFlow
             }
 
-        awaitClose { listener.remove() }
+            // Extract commentIds from the post
+            @Suppress("UNCHECKED_CAST")
+            val commentIds = postDoc.get("commentIds") as? List<String> ?: emptyList()
+            Timber.d("Found ${commentIds.size} commentIds for post $postId: $commentIds")
+
+            if (commentIds.isEmpty()) {
+                Timber.d("No commentIds for post $postId")
+                trySend(emptyList())
+                awaitClose { }
+                return@callbackFlow
+            }
+
+            // Create a listener on the comments collection to detect changes to any of these comments
+            val listener = commentsCollection
+                .whereIn(FieldPath.documentId(), commentIds)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Timber.e(error, "Error fetching comments: ${error.message}")
+                        return@addSnapshotListener
+                    }
+
+                    if (snapshot != null) {
+                        // Parse comments and maintain original order from commentIds
+                        val commentsMap = snapshot.documents.mapNotNull { doc ->
+                            try {
+                                val comment = parseCommentDocument(doc, postId)
+                                comment.id to comment
+                            } catch (e: Exception) {
+                                Timber.e(e, "Error parsing comment: ${e.message}")
+                                null
+                            }
+                        }.toMap()
+
+                        // Create list in the same order as commentIds
+                        val orderedComments = commentIds.mapNotNull { commentsMap[it] }
+
+                        Timber.d("Sending ${orderedComments.size} comments for post $postId")
+                        trySend(orderedComments)
+                    } else {
+                        Timber.d("No snapshot for comments on post $postId")
+                        trySend(emptyList())
+                    }
+                }
+
+            awaitClose {
+                Timber.d("Closing comments listener for post $postId")
+                listener.remove()
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Error in getComments flow: ${e.message}")
+            trySend(emptyList())
+            awaitClose { }
+        }
+    }
+
+    // Add helper function to parse comment documents
+    private fun parseCommentDocument(document: DocumentSnapshot, postId: String): Comment {
+        val id = document.getString("id") ?: document.id
+        val userId = document.getString("userId") ?: ""
+        val userName = document.getString("userName") ?: "Anonymous"
+        val userPhotoUrl = document.getString("userPhotoUrl")
+        val content = document.getString("content") ?: ""
+        val timestamp = document.getTimestamp("createdAt") ?: Timestamp.now()
+        val likeCount = document.getLong("likeCount")?.toInt() ?: 0
+
+        // Check if current user has liked this comment (simplified)
+        val isLikedByCurrentUser = false // Add comment like tracking later
+
+        return Comment(
+            id = id,
+            postId = postId,
+            userId = userId,
+            userName = userName,
+            userPhotoUrl = userPhotoUrl,
+            content = content,
+            createdAt = timestamp.toDate(),
+            likeCount = likeCount,
+            isLikedByCurrentUser = isLikedByCurrentUser
+        )
     }
 
     suspend fun addComment(postId: String, content: String): Result<Comment> {
@@ -385,6 +419,8 @@ class FirebaseSocialService {
                 "likeCount" to 0
             )
 
+            Timber.d("Adding comment: $commentId to post: $postId with content: $content")
+
             // Use a transaction to update both the comment and post comment count
             db.runTransaction { transaction ->
                 val postRef = postsCollection.document(postId)
@@ -396,8 +432,18 @@ class FirebaseSocialService {
 
                 val currentCommentCount = post.getLong("commentCount") ?: 0
 
+                // We're still updating the commentIds for consistency
+                @Suppress("UNCHECKED_CAST")
+                val commentIds = post.get("commentIds") as? List<String> ?: emptyList()
+                val updatedCommentIds = commentIds.toMutableList()
+                updatedCommentIds.add(commentId)
+
+                // Add the comment document
                 transaction.set(commentsCollection.document(commentId), commentData)
+
+                // Update the post
                 transaction.update(postRef, "commentCount", currentCommentCount + 1)
+                transaction.update(postRef, "commentIds", updatedCommentIds)
             }.await()
 
             // Create the comment object to return
@@ -413,9 +459,10 @@ class FirebaseSocialService {
                 isLikedByCurrentUser = false
             )
 
+            Timber.d("Successfully added comment: $commentId")
             Result.success(comment)
         } catch (e: Exception) {
-            Timber.e(e, "Error adding comment")
+            Timber.e(e, "Error adding comment to post $postId: ${e.message}")
             Result.failure(e)
         }
     }
@@ -443,7 +490,17 @@ class FirebaseSocialService {
 
                 if (post.exists()) {
                     val currentCommentCount = post.getLong("commentCount") ?: 0
+
+                    // Get current comment IDs
+                    @Suppress("UNCHECKED_CAST")
+                    val commentIds = post.get("commentIds") as? List<String> ?: emptyList()
+                    val updatedCommentIds = commentIds.toMutableList()
+
+                    // Remove this comment ID from the list
+                    updatedCommentIds.remove(commentId)
+
                     transaction.update(postRef, "commentCount", (currentCommentCount - 1).coerceAtLeast(0))
+                    transaction.update(postRef, "commentIds", updatedCommentIds)
                 }
 
                 transaction.delete(commentsCollection.document(commentId))
@@ -467,11 +524,17 @@ class FirebaseSocialService {
         val timestamp = document.getTimestamp("createdAt") ?: Timestamp.now()
         val likeCount = document.getLong("likeCount")?.toInt() ?: 0
         val commentCount = document.getLong("commentCount")?.toInt() ?: 0
-        val likeUsernames = document.get("likeUsernames") as? List<String> ?: emptyList()
-        val likeUserIds = document.get("likeUserIds") as? List<String> ?: emptyList()
+
+        // Get likes map
+        @Suppress("UNCHECKED_CAST")
+        val likes = document.get("likes") as? Map<String, String> ?: emptyMap()
+
+        // Get comment IDs
+        @Suppress("UNCHECKED_CAST")
+        val commentIds = document.get("commentIds") as? List<String> ?: emptyList()
 
         // Check if current user has liked this post
-        val isLiked = currentUserId != null && likeUserIds.contains(currentUserId)
+        val isLiked = currentUserId != null && likes.containsKey(currentUserId)
 
         return Post(
             id = id,
@@ -485,8 +548,8 @@ class FirebaseSocialService {
             likeCount = likeCount,
             commentCount = commentCount,
             isLikedByCurrentUser = isLiked,
-            likeUsernames = likeUsernames,
-            likeUserIds = likeUserIds
+            likes = likes,
+            commentIds = commentIds
         )
     }
 

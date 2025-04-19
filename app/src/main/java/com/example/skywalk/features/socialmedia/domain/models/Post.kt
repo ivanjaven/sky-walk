@@ -15,6 +15,8 @@ data class Post(
     val likeCount: Int = 0,
     val commentCount: Int = 0,
     val isLikedByCurrentUser: Boolean = false,
-    val likeUsernames: List<String> = emptyList(),
-    val likeUserIds: List<String> = emptyList()
+    // Map of userId -> username for likes
+    val likes: Map<String, String> = emptyMap(),
+    // Store commentIds to fetch comments when needed
+    val commentIds: List<String> = emptyList()
 )

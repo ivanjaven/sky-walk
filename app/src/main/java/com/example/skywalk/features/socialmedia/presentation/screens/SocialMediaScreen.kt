@@ -41,10 +41,11 @@ fun SocialMediaScreen(
     val showNoMorePostsMessage by viewModel.showNoMorePostsMessage.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val postCreationSuccess by viewModel.postCreationSuccess.collectAsState()
+    val isLoadingComments by viewModel.isLoadingComments.collectAsState()
+    val commentError by viewModel.commentError.collectAsState()
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    val sheetState = rememberModalBottomSheetState()
 
     // Handle post creation success
     LaunchedEffect(postCreationSuccess) {
@@ -73,27 +74,22 @@ fun SocialMediaScreen(
         }
     }
 
-    // Comments bottom sheet
+    // Fullscreen Comments Dialog
     if (showCommentsSheet && selectedPostId != null) {
-        ModalBottomSheet(
-            onDismissRequest = { viewModel.hideCommentsSheet() },
-            sheetState = sheetState
-        ) {
-            val currentPostComments = commentsMap[selectedPostId] ?: emptyList()
+        val currentPostComments = commentsMap[selectedPostId] ?: emptyList()
 
-            CommentBottomSheet(
-                postId = selectedPostId!!,
-                comments = currentPostComments,
-                commentContent = commentContent,
-                onCommentContentChange = viewModel::setCommentContent,
-                onSendComment = {
-                    viewModel.addComment()
-                },
-                formatTimestamp = viewModel::formatTimestamp,
-                currentUserPhotoUrl = currentUser?.photoUrl,
-                onDismiss = { viewModel.hideCommentsSheet() }
-            )
-        }
+        FullscreenCommentDialog(
+            postId = selectedPostId!!,
+            comments = currentPostComments,
+            commentContent = commentContent,
+            onCommentContentChange = viewModel::setCommentContent,
+            onSendComment = { viewModel.addComment() },
+            formatTimestamp = viewModel::formatTimestamp,
+            currentUserPhotoUrl = currentUser?.photoUrl,
+            isLoadingComments = isLoadingComments,
+            commentError = commentError,
+            onDismiss = { viewModel.hideCommentsSheet() }
+        )
     }
 
     // Fullscreen image viewer
@@ -227,3 +223,4 @@ fun SpaceEndMessage() {
         }
     }
 }
+

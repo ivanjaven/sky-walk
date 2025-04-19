@@ -9,7 +9,10 @@ import com.example.skywalk.features.socialmedia.data.repository.SocialMediaRepos
 import com.example.skywalk.features.socialmedia.domain.models.Comment
 import com.example.skywalk.features.socialmedia.domain.models.Post
 import com.example.skywalk.features.socialmedia.domain.usecases.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.io.File
@@ -89,6 +92,14 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     // Post successfully created
     private val _postCreationSuccess = MutableStateFlow(false)
     val postCreationSuccess: StateFlow<Boolean> = _postCreationSuccess
+
+    // Loading state for comments
+    private val _isLoadingComments = MutableStateFlow(false)
+    val isLoadingComments: StateFlow<Boolean> = _isLoadingComments
+
+    // Comment error state
+    private val _commentError = MutableStateFlow<String?>(null)
+    val commentError: StateFlow<String?> = _commentError
 
     init {
         loadInitialPosts()
@@ -308,9 +319,7 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
             // The actual likeUserIds and likeUsernames will be updated from the server
             val updatedPost = post.copy(
                 isLikedByCurrentUser = isLiked,
-                likeCount = if (isLiked) post.likeCount + 1 else (post.likeCount - 1).coerceAtLeast(
-                    0
-                )
+                likeCount = if (isLiked) post.likeCount + 1 else (post.likeCount - 1).coerceAtLeast(0)
             )
             currentPosts[postIndex] = updatedPost
             _posts.value = currentPosts
@@ -318,26 +327,47 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun loadComments(postId: String) {
+        Timber.d("Loading comments for post $postId")
         _selectedPostId.value = postId
         _showCommentsSheet.value = true
         _commentContent.value = "" // Clear previous comment
+        _isLoadingComments.value = true
+        _commentError.value = null
 
         viewModelScope.launch {
             try {
+                // Show loading state for comments
+                _commentsMap.update { currentMap ->
+                    val newMap = currentMap.toMutableMap()
+                    // If no comments are cached yet, put an empty list to show loading state
+                    if (!newMap.containsKey(postId)) {
+                        newMap[postId] = emptyList()
+                    }
+                    newMap
+                }
+
                 getCommentsUseCase(postId)
                     .catch { e ->
-                        Timber.e(e, "Error loading comments")
+                        Timber.e(e, "Error in comment flow: ${e.message}")
+                        _isLoadingComments.value = false
+                        _commentError.value = "Failed to load comments. Please try again."
                     }
                     .collect { loadedComments ->
+                        Timber.d("Received ${loadedComments.size} comments for post $postId: $loadedComments")
+
                         // Store comments in map indexed by postId
                         _commentsMap.update { currentMap ->
                             val newMap = currentMap.toMutableMap()
                             newMap[postId] = loadedComments
                             newMap
                         }
+
+                        _isLoadingComments.value = false
                     }
             } catch (e: Exception) {
-                Timber.e(e, "Error loading comments")
+                Timber.e(e, "Exception in loadComments: ${e.message}")
+                _isLoadingComments.value = false
+                _commentError.value = "Failed to load comments. Please try again."
             }
         }
     }
@@ -345,10 +375,7 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     fun hideCommentsSheet() {
         _showCommentsSheet.value = false
         _commentContent.value = "" // Clear comment field when closing
-    }
-
-    fun setCommentContent(content: String) {
-        _commentContent.value = content
+        _commentError.value = null
     }
 
     fun addComment() {
@@ -359,38 +386,47 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
             return
         }
 
+        Timber.d("Adding comment to post $postId: $content")
+
         viewModelScope.launch {
             try {
+                // Clear the input first for immediate feedback
+                _commentContent.value = ""
+
                 val result = addCommentUseCase(postId, content)
 
                 result.fold(
                     onSuccess = { newComment ->
-                        // Add new comment to the map
+                        Timber.d("Comment added successfully: ${newComment.id}")
+                        // Optimistically update the comment list without waiting for the listener
                         _commentsMap.update { currentMap ->
                             val currentComments = currentMap[postId]?.toMutableList() ?: mutableListOf()
                             currentComments.add(newComment)
-
                             val newMap = currentMap.toMutableMap()
                             newMap[postId] = currentComments
                             newMap
                         }
 
-                        // Update comment count on the post
+                        // Update post comment count
                         updatePostCommentCount(postId, 1)
-
-                        // Clear the input
-                        _commentContent.value = ""
                     },
                     onFailure = { error ->
-                        Timber.e(error, "Error adding comment")
+                        Timber.e(error, "Error adding comment: ${error.message}")
+                        _commentError.value = "Failed to add comment. Please try again."
                     }
                 )
             } catch (e: Exception) {
-                Timber.e(e, "Error adding comment")
+                Timber.e(e, "Exception in addComment: ${e.message}")
+                _commentError.value = "Failed to add comment. Please try again."
             }
         }
     }
 
+    fun setCommentContent(content: String) {
+        _commentContent.value = content
+    }
+
+    // Method to update the post's comment count locally
     private fun updatePostCommentCount(postId: String, delta: Int) {
         val currentPosts = _posts.value.toMutableList()
         val postIndex = currentPosts.indexOfFirst { it.id == postId }
@@ -412,10 +448,6 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
 
     fun clearSelectedImages() {
         _selectedImageUrls.value = null
-    }
-
-    fun getCommentsForPost(postId: String): List<Comment> {
-        return _commentsMap.value[postId] ?: emptyList()
     }
 
     fun formatTimestamp(date: Date): String {

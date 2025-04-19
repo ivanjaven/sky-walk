@@ -21,6 +21,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.skywalk.R
 import com.example.skywalk.features.socialmedia.domain.models.Post
+import com.google.firebase.auth.FirebaseAuth
+import timber.log.Timber
 
 @Composable
 fun PostCard(
@@ -32,6 +34,12 @@ fun PostCard(
     onMoreClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Get current user ID to check if the current user has liked
+    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+
+    // Debug log for post and comments
+    Timber.d("Rendering post ${post.id} with ${post.commentCount} comments and ${post.commentIds.size} commentIds")
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -150,9 +158,11 @@ fun PostCard(
                         val otherLikes = post.likeCount - 1
                         append(" and $otherLikes ${if (otherLikes == 1) "other" else "others"}")
                     }
-                } else if (post.likeUsernames.isNotEmpty()) {
-                    append("Liked by ${post.likeUsernames.joinToString(" and ")}")
-                    if (post.likeCount > post.likeUsernames.size) {
+                } else if (post.likes.isNotEmpty()) {
+                    // Get first 2 usernames to display
+                    val usernames = post.likes.values.take(2)
+                    append("Liked by ${usernames.joinToString(" and ")}")
+                    if (post.likeCount > usernames.size) {
                         append(" and others")
                     }
                 } else {
