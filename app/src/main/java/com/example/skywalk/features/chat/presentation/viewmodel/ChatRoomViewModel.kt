@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.skywalk.features.chat.data.repository.ChatRepositoryImpl
 import com.example.skywalk.features.chat.domain.models.ChatMessage
 import com.example.skywalk.features.chat.domain.models.ChatUser
+import com.example.skywalk.features.chat.domain.models.MessageStatus
 import com.example.skywalk.features.chat.domain.usecases.*
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,8 +57,10 @@ class ChatRoomViewModel(application: Application) : AndroidViewModel(application
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending
 
-    // Current user ID
+    // Current user details
     private val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+    private val currentUserName = FirebaseAuth.getInstance().currentUser?.displayName ?: "Me"
+    private val currentUserPhotoUrl = FirebaseAuth.getInstance().currentUser?.photoUrl?.toString()
 
     fun setChatRoom(chatRoomId: String, otherUserId: String) {
         _chatRoomId.value = chatRoomId
@@ -110,6 +113,7 @@ class ChatRoomViewModel(application: Application) : AndroidViewModel(application
         val chatRoomId = _chatRoomId.value ?: return
         val text = _messageText.value.trim()
         val imageUri = _selectedImage.value
+        val currentId = currentUserId ?: return
 
         if (text.isBlank() && imageUri == null) {
             return
@@ -119,38 +123,124 @@ class ChatRoomViewModel(application: Application) : AndroidViewModel(application
 
         viewModelScope.launch {
             try {
+                // Generate temporary message ID for optimistic update
+                val tempMessageId = UUID.randomUUID().toString()
+                val timestamp = System.currentTimeMillis()
+
                 // Clear input first for immediate feedback
+                val messageContent = text
                 _messageText.value = ""
+                val selectedImageCopy = imageUri
                 _selectedImage.value = null
 
-                // Send message(s)
-                if (text.isNotBlank()) {
-                    val result = sendTextMessageUseCase(chatRoomId, text)
-                    result.onFailure { error ->
-                        Timber.e(error, "Error sending text message")
-                        _uiState.value = ChatRoomUiState.Error("Failed to send message. Please try again.")
-                    }
+                // First, add an optimistic message to the UI
+                if (messageContent.isNotBlank()) {
+                    val optimisticMessage = ChatMessage(
+                        id = tempMessageId,
+                        chatRoomId = chatRoomId,
+                        senderId = currentId,
+                        senderName = currentUserName,
+                        senderPhotoUrl = currentUserPhotoUrl,
+                        content = messageContent,
+                        timestamp = timestamp,
+                        isRead = false,
+                        status = MessageStatus.SENDING
+                    )
+
+                    // Add to the messages list
+                    val updatedMessages = _messages.value.toMutableList()
+                    updatedMessages.add(optimisticMessage)
+                    _messages.value = updatedMessages
+
+                    // Send the actual message
+                    val result = sendTextMessageUseCase(chatRoomId, messageContent)
+
+                    result.fold(
+                        onSuccess = { sentMessage ->
+                            // Update the optimistic message with the real one
+                            val index = _messages.value.indexOfFirst { it.id == tempMessageId }
+                            if (index != -1) {
+                                val newMessages = _messages.value.toMutableList()
+                                newMessages[index] = sentMessage
+                                _messages.value = newMessages
+                            }
+                        },
+                        onFailure = { error ->
+                            // Update optimistic message to show failure
+                            val index = _messages.value.indexOfFirst { it.id == tempMessageId }
+                            if (index != -1) {
+                                val newMessages = _messages.value.toMutableList()
+                                newMessages[index] = newMessages[index].copy(status = MessageStatus.FAILED)
+                                _messages.value = newMessages
+                            }
+                            Timber.e(error, "Error sending text message")
+                            _uiState.value = ChatRoomUiState.Error("Failed to send message. Please try again.")
+                        }
+                    )
                 }
 
-                if (imageUri != null) {
+                if (selectedImageCopy != null) {
+                    // For image, add an optimistic image message
+                    val optimisticImageMessage = ChatMessage(
+                        id = UUID.randomUUID().toString(),
+                        chatRoomId = chatRoomId,
+                        senderId = currentId,
+                        senderName = currentUserName,
+                        senderPhotoUrl = currentUserPhotoUrl,
+                        imageUrl = selectedImageCopy.toString(), // Local URI for preview
+                        timestamp = timestamp,
+                        isRead = false,
+                        status = MessageStatus.SENDING
+                    )
+
+                    // Add to the messages list
+                    val updatedMessages = _messages.value.toMutableList()
+                    updatedMessages.add(optimisticImageMessage)
+                    _messages.value = updatedMessages
+
                     // Convert Uri to File
                     val context = getApplication<Application>()
                     val tempFile = File(context.cacheDir, "temp_message_image_${System.currentTimeMillis()}.jpg")
 
-                    context.contentResolver.openInputStream(imageUri)?.use { input ->
-                        tempFile.outputStream().use { output ->
-                            input.copyTo(output)
+                    try {
+                        context.contentResolver.openInputStream(selectedImageCopy)?.use { input ->
+                            tempFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
                         }
-                    }
 
-                    val result = sendImageMessageUseCase(chatRoomId, tempFile)
-                    result.onFailure { error ->
-                        Timber.e(error, "Error sending image message")
-                        _uiState.value = ChatRoomUiState.Error("Failed to send image. Please try again.")
-                    }
+                        val imageMessageId = optimisticImageMessage.id
+                        val result = sendImageMessageUseCase(chatRoomId, tempFile)
 
-                    // Clean up temp file
-                    tempFile.delete()
+                        result.fold(
+                            onSuccess = { sentImageMessage ->
+                                // Update the optimistic message with the real one
+                                val index = _messages.value.indexOfFirst { it.id == imageMessageId }
+                                if (index != -1) {
+                                    val newMessages = _messages.value.toMutableList()
+                                    newMessages[index] = sentImageMessage
+                                    _messages.value = newMessages
+                                }
+                            },
+                            onFailure = { error ->
+                                // Update optimistic message to show failure
+                                val index = _messages.value.indexOfFirst { it.id == imageMessageId }
+                                if (index != -1) {
+                                    val newMessages = _messages.value.toMutableList()
+                                    newMessages[index] = newMessages[index].copy(status = MessageStatus.FAILED)
+                                    _messages.value = newMessages
+                                }
+                                Timber.e(error, "Error sending image message")
+                                _uiState.value = ChatRoomUiState.Error("Failed to send image. Please try again.")
+                            }
+                        )
+                    } catch (e: Exception) {
+                        Timber.e(e, "Error processing image")
+                        _uiState.value = ChatRoomUiState.Error("Failed to process image. Please try again.")
+                    } finally {
+                        // Clean up temp file
+                        tempFile.delete()
+                    }
                 }
             } catch (e: Exception) {
                 Timber.e(e, "Error in sendMessage")

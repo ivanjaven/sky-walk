@@ -13,12 +13,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.skywalk.R
 import com.example.skywalk.features.chat.domain.models.ChatMessage
@@ -57,38 +58,65 @@ fun MessageItem(
     onImageClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalAlignment = if (isFromCurrentUser) Alignment.End else Alignment.Start
+            .padding(
+                start = if (isFromCurrentUser) 60.dp else 20.dp,
+                end = if (isFromCurrentUser) 20.dp else 60.dp,
+                top = 2.dp,
+                bottom = 2.dp
+            ),
+        horizontalArrangement = if (isFromCurrentUser) Arrangement.End else Arrangement.Start
     ) {
-        // Message row with avatar for received messages
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = if (isFromCurrentUser) Arrangement.End else Arrangement.Start,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // Show avatar only for received messages
-            if (!isFromCurrentUser) {
-                AsyncImage(
+        // For image messages - display without bubble
+        if (message.imageUrl != null && message.content.isEmpty()) {
+            Column(
+                horizontalAlignment = if (isFromCurrentUser) Alignment.End else Alignment.Start
+            ) {
+                // Image (no bubble) with loading skeleton
+                SubcomposeAsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data(message.senderPhotoUrl ?: R.drawable.placeholder_user)
+                        .data(message.imageUrl)
                         .crossfade(true)
-                        .placeholder(R.drawable.placeholder_user)
                         .build(),
-                    contentDescription = "Profile picture",
+                    contentDescription = "Message image",
+                    loading = {
+                        Box(
+                            modifier = Modifier
+                                .size(200.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(40.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    },
                     modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape),
-                    contentScale = ContentScale.Crop
+                        .widthIn(max = 220.dp)
+                        .heightIn(max = 220.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onImageClick(message.imageUrl) },
+                    contentScale = ContentScale.Fit
                 )
 
-                Spacer(modifier = Modifier.width(8.dp))
+                // Time under the image
+                Text(
+                    text = formattedTime,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
-
-            // Message bubble
-            Column {
+        } else {
+            // Text messages (with bubble)
+            Column(
+                horizontalAlignment = if (isFromCurrentUser) Alignment.End else Alignment.Start
+            ) {
                 Surface(
                     color = if (isFromCurrentUser)
                         MaterialTheme.colorScheme.primary
@@ -99,53 +127,67 @@ fun MessageItem(
                         topEnd = 16.dp,
                         bottomStart = if (isFromCurrentUser) 16.dp else 4.dp,
                         bottomEnd = if (isFromCurrentUser) 4.dp else 16.dp
-                    ),
-                    modifier = Modifier.widthIn(max = 280.dp)
+                    )
                 ) {
                     Column(
-                        modifier = Modifier.padding(12.dp)
+                        modifier = Modifier.padding(
+                            horizontal = 16.dp,
+                            vertical = 10.dp
+                        )
                     ) {
                         // Text content
-                        if (message.content.isNotEmpty()) {
-                            Text(
-                                text = message.content,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (isFromCurrentUser)
-                                    MaterialTheme.colorScheme.onPrimary
-                                else
-                                    MaterialTheme.colorScheme.onSurface
-                            )
-                        }
+                        Text(
+                            text = message.content,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isFromCurrentUser)
+                                MaterialTheme.colorScheme.onPrimary
+                            else
+                                MaterialTheme.colorScheme.onSurface
+                        )
 
-                        // Image content
+                        // Image content if there's also text
                         message.imageUrl?.let { imageUrl ->
-                            if (message.content.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                            }
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                            AsyncImage(
+                            // Image with loading skeleton
+                            SubcomposeAsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
                                     .data(imageUrl)
                                     .crossfade(true)
                                     .build(),
                                 contentDescription = "Message image",
+                                loading = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(180.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.Gray.copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        androidx.compose.material3.CircularProgressIndicator(
+                                            modifier = Modifier.size(40.dp),
+                                            color = if (isFromCurrentUser)
+                                                MaterialTheme.colorScheme.onPrimary
+                                            else
+                                                MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                },
                                 modifier = Modifier
-                                    .fillMaxWidth()
+                                    .widthIn(max = 200.dp)
                                     .heightIn(max = 200.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable { onImageClick(imageUrl) },
-                                contentScale = ContentScale.Crop
+                                contentScale = ContentScale.Fit
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Time and read status
+                // Time and status
                 Row(
-                    modifier = Modifier.align(if (isFromCurrentUser) Alignment.End else Alignment.Start),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
                 ) {
                     Text(
                         text = formattedTime,
@@ -156,8 +198,6 @@ fun MessageItem(
 
                     if (isFromCurrentUser) {
                         Spacer(modifier = Modifier.width(4.dp))
-
-                        // Status indicator
                         Text(
                             text = when (message.status) {
                                 MessageStatus.SENDING -> "Sending..."
@@ -172,10 +212,6 @@ fun MessageItem(
                         )
                     }
                 }
-            }
-
-            if (isFromCurrentUser) {
-                Spacer(modifier = Modifier.width(40.dp)) // Balance with avatar on the left
             }
         }
     }

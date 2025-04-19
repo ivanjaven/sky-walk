@@ -14,7 +14,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.ArrowBack
-//import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
@@ -31,6 +30,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.skywalk.R
 import com.example.skywalk.features.chat.presentation.components.DateHeader
+import com.example.skywalk.features.chat.presentation.components.FullScreenImageViewer
 import com.example.skywalk.features.chat.presentation.components.MessageItem
 import com.example.skywalk.features.chat.presentation.viewmodel.ChatRoomUiState
 import com.example.skywalk.features.chat.presentation.viewmodel.ChatRoomViewModel
@@ -54,16 +54,24 @@ fun ChatRoomScreen(
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
+    // Track if we need to scroll to bottom
+    var shouldScrollToBottom by remember { mutableStateOf(false) }
+
+    // For full-screen image viewer
+    var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
+
     // Initialize the chat room
     LaunchedEffect(chatRoomId, otherUserId) {
         viewModel.setChatRoom(chatRoomId, otherUserId)
+        shouldScrollToBottom = true
     }
 
     // Scroll to bottom on new message
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
+        if (messages.isNotEmpty() && shouldScrollToBottom) {
             coroutineScope.launch {
                 listState.animateScrollToItem(messages.size - 1)
+                shouldScrollToBottom = false
             }
         }
     }
@@ -74,7 +82,16 @@ fun ChatRoomScreen(
     ) { uri ->
         if (uri != null) {
             viewModel.setSelectedImage(uri)
+            shouldScrollToBottom = true
         }
+    }
+
+    // Full-screen image viewer
+    fullScreenImageUrl?.let { imageUrl ->
+        FullScreenImageViewer(
+            imageUrl = imageUrl,
+            onDismiss = { fullScreenImageUrl = null }
+        )
     }
 
     Scaffold(
@@ -131,6 +148,7 @@ fun ChatRoomScreen(
                             messages = messages,
                             viewModel = viewModel,
                             listState = listState,
+                            onImageClick = { url -> fullScreenImageUrl = url },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -156,6 +174,7 @@ fun ChatRoomScreen(
                             messages = messages,
                             viewModel = viewModel,
                             listState = listState,
+                            onImageClick = { url -> fullScreenImageUrl = url },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -168,6 +187,7 @@ fun ChatRoomScreen(
                             messages = messages,
                             viewModel = viewModel,
                             listState = listState,
+                            onImageClick = { url -> fullScreenImageUrl = url },
                             modifier = Modifier.weight(1f)
                         )
                     } else {
@@ -192,15 +212,13 @@ fun ChatRoomScreen(
                 text = messageText,
                 onTextChanged = viewModel::setMessageText,
                 selectedImage = selectedImage,
-                onImageSelected = { imagePicker.launch("image/*") },
+                onImageSelected = {
+                    imagePicker.launch("image/*")
+                },
                 onImageRemoved = { viewModel.setSelectedImage(null) },
                 onSendClick = {
                     viewModel.sendMessage()
-                    coroutineScope.launch {
-                        if (messages.isNotEmpty()) {
-                            listState.animateScrollToItem(messages.size)
-                        }
-                    }
+                    shouldScrollToBottom = true
                 },
                 isSending = isSending
             )
@@ -213,6 +231,7 @@ fun MessagesList(
     messages: List<com.example.skywalk.features.chat.domain.models.ChatMessage>,
     viewModel: ChatRoomViewModel,
     listState: androidx.compose.foundation.lazy.LazyListState,
+    onImageClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -222,7 +241,7 @@ fun MessagesList(
     ) {
         itemsIndexed(
             items = messages,
-            key = { _, message -> message.id }
+            key = { _, message -> message.id } // Use stable IDs for better animation
         ) { index, message ->
             // Date header
             if (viewModel.shouldShowDateHeader(index)) {
@@ -236,7 +255,7 @@ fun MessagesList(
                 message = message,
                 isFromCurrentUser = viewModel.isFromCurrentUser(message),
                 formattedTime = viewModel.formatTime(message.timestamp),
-                onImageClick = { /* Handle image click */ }
+                onImageClick = onImageClick
             )
         }
     }
