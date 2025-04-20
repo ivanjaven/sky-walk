@@ -437,13 +437,18 @@ class FirebaseChatService {
                 .get()
                 .await()
 
-            val batch = db.batch()
-            unreadMessages.documents.forEach { doc ->
-                batch.update(doc.reference, "isRead", true)
-                batch.update(doc.reference, "status", MessageStatus.READ.name)
-            }
+            if (!unreadMessages.isEmpty) {
+                val batch = db.batch()
+                unreadMessages.documents.forEach { doc ->
+                    batch.update(doc.reference, "isRead", true)
+                    batch.update(doc.reference, "status", MessageStatus.READ.name)
+                }
 
-            batch.commit().await()
+                batch.commit().await()
+
+                // Logging to confirm marking as read
+                Timber.d("Marked ${unreadMessages.size()} messages as read in room $chatRoomId")
+            }
 
             return Result.success(Unit)
         } catch (e: Exception) {
@@ -453,7 +458,7 @@ class FirebaseChatService {
     }
 
     // Parse a chat message from a Firestore document
-    private fun parseChatMessage(doc: com.google.firebase.firestore.DocumentSnapshot): ChatMessage {
+    fun parseChatMessage(doc: com.google.firebase.firestore.DocumentSnapshot): ChatMessage {
         val id = doc.getString("id") ?: doc.id
         val chatRoomId = doc.getString("chatRoomId") ?: ""
         val senderId = doc.getString("senderId") ?: ""

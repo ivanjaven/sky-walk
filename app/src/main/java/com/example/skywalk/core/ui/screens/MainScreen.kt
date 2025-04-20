@@ -170,6 +170,12 @@ fun NavigationGraph(
 
         composable("chat") {
             val chatListViewModel = viewModel<ChatListViewModel>()
+
+            // Use silentRefresh instead of manualRefresh
+            LaunchedEffect(navController.currentBackStackEntry) {
+                chatListViewModel.silentRefresh() // Changed to silentRefresh
+            }
+
             ChatListScreen(
                 onNavigateToChatRoom = { chatRoomId, otherUserId ->
                     navController.navigate("chat/room/$chatRoomId/$otherUserId")

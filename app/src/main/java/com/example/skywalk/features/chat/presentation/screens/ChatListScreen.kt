@@ -17,13 +17,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.skywalk.features.chat.presentation.components.ChatRoomItem
 import com.example.skywalk.features.chat.presentation.components.UserSearchItem
 import com.example.skywalk.features.chat.presentation.viewmodel.ChatListUiState
 import com.example.skywalk.features.chat.presentation.viewmodel.ChatListViewModel
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,6 +39,7 @@ fun ChatListScreen(
     val searchResults by viewModel.searchResults.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     val focusRequester = remember { FocusRequester() }
 
@@ -123,18 +126,57 @@ fun ChatListScreen(
                 }
 
                 else -> {
-                    when (uiState) {
-                        is ChatListUiState.Loading -> {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator()
+                    SwipeRefresh(
+                        state = rememberSwipeRefreshState(isRefreshing),
+                        onRefresh = { viewModel.manualRefresh() }
+                    ) {
+                        when (uiState) {
+                            is ChatListUiState.Loading -> {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
                             }
-                        }
 
-                        is ChatListUiState.Success -> {
-                            if (chatRooms.isEmpty()) {
+                            is ChatListUiState.Success -> {
+                                if (chatRooms.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "No conversations yet.\nSearch for users to start chatting!",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                } else {
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize()
+                                    ) {
+                                        items(chatRooms) { chatRoom ->
+                                            val otherUser = chatRoom.participants.firstOrNull()
+                                            if (otherUser != null) {
+                                                ChatRoomItem(
+                                                    chatRoom = chatRoom,
+                                                    formattedTime = viewModel.formatTimestamp(chatRoom.timestamp),
+                                                    onClick = {
+                                                        onNavigateToChatRoom(chatRoom.id, otherUser.id)
+                                                    }
+                                                )
+                                                Divider()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            is ChatListUiState.Error -> {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -142,45 +184,11 @@ fun ChatListScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = "No conversations yet.\nSearch for users to start chatting!",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        text = (uiState as ChatListUiState.Error).message,
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodyLarge
                                     )
                                 }
-                            } else {
-                                LazyColumn(
-                                    modifier = Modifier.fillMaxSize()
-                                ) {
-                                    items(chatRooms) { chatRoom ->
-                                        val otherUser = chatRoom.participants.firstOrNull()
-                                        if (otherUser != null) {
-                                            ChatRoomItem(
-                                                chatRoom = chatRoom,
-                                                formattedTime = viewModel.formatTimestamp(chatRoom.timestamp),
-                                                onClick = {
-                                                    onNavigateToChatRoom(chatRoom.id, otherUser.id)
-                                                }
-                                            )
-                                            Divider()
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        is ChatListUiState.Error -> {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = (uiState as ChatListUiState.Error).message,
-                                    color = MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
                             }
                         }
                     }

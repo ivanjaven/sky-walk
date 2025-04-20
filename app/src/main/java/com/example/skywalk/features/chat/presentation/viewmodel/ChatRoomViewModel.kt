@@ -80,6 +80,7 @@ class ChatRoomViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+
     private fun loadMessages(chatRoomId: String) {
         viewModelScope.launch {
             _uiState.value = ChatRoomUiState.Loading
@@ -254,9 +255,15 @@ class ChatRoomViewModel(application: Application) : AndroidViewModel(application
     fun markMessagesAsRead(chatRoomId: String) {
         viewModelScope.launch {
             try {
-                markMessagesAsReadUseCase(chatRoomId)
+                val result = markMessagesAsReadUseCase(chatRoomId)
+                result.onFailure { error ->
+                    Timber.e(error, "Error marking messages as read")
+                    // Retry once after a short delay
+                    kotlinx.coroutines.delay(500)
+                    markMessagesAsReadUseCase(chatRoomId)
+                }
             } catch (e: Exception) {
-                Timber.e(e, "Error marking messages as read")
+                Timber.e(e, "Error in markMessagesAsRead")
             }
         }
     }

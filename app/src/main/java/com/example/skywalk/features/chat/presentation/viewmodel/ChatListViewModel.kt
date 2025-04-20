@@ -24,6 +24,8 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private val getChatRoomsUseCase = GetChatRoomsUseCase(repository)
     private val searchUsersUseCase = SearchUsersUseCase(repository)
     private val getOrCreateChatRoomUseCase = GetOrCreateChatRoomUseCase(repository)
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing
 
     // UI state
     private val _uiState = MutableStateFlow<ChatListUiState>(ChatListUiState.Loading)
@@ -53,15 +55,39 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         loadChatRooms()
     }
 
-    private fun loadChatRooms() {
+    fun manualRefresh() {
         viewModelScope.launch {
-            _uiState.value = ChatListUiState.Loading
+            _isRefreshing.value = true
 
+            try {
+                // Short delay to ensure pulling animation is visible
+                kotlinx.coroutines.delay(300)
+
+                // Re-load the chat rooms
+                loadChatRooms(showLoading = false)
+            } catch (e: Exception) {
+                Timber.e(e, "Error in manual refresh")
+            } finally {
+                _isRefreshing.value = false
+            }
+        }
+    }
+
+    // Modified version of your existing loadChatRooms
+    private fun loadChatRooms(showLoading: Boolean = true) {
+        // Only show loading state for initial load, not for refreshes
+        if (showLoading && _chatRooms.value.isEmpty()) {
+            _uiState.value = ChatListUiState.Loading
+        }
+
+        viewModelScope.launch {
             try {
                 getChatRoomsUseCase()
                     .catch { e ->
-                        Timber.e(e, "Error loading chat rooms")
-                        _uiState.value = ChatListUiState.Error(e.message ?: "Failed to load chat rooms")
+                        Timber.e(e, "Error fetching chat rooms")
+                        if (_chatRooms.value.isEmpty()) {
+                            _uiState.value = ChatListUiState.Error(e.message ?: "Failed to load chat rooms")
+                        }
                     }
                     .collect { rooms ->
                         _chatRooms.value = rooms
@@ -70,7 +96,20 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                     }
             } catch (e: Exception) {
                 Timber.e(e, "Error in loadChatRooms")
-                _uiState.value = ChatListUiState.Error(e.message ?: "Unknown error")
+                if (_chatRooms.value.isEmpty()) {
+                    _uiState.value = ChatListUiState.Error(e.message ?: "Unknown error")
+                }
+            }
+        }
+    }
+
+    fun silentRefresh() {
+        viewModelScope.launch {
+            try {
+                // Directly reload the data without setting isRefreshing to true
+                loadChatRooms(showLoading = false)
+            } catch (e: Exception) {
+                Timber.e(e, "Error in silent refresh")
             }
         }
     }
