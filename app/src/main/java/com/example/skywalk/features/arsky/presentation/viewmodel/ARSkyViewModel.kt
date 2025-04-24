@@ -1,3 +1,4 @@
+// features/arsky/presentation/viewmodel/ARSkyViewModel.kt
 package com.example.skywalk.features.arsky.presentation.viewmodel
 
 import android.app.Application
@@ -16,72 +17,83 @@ class ARSkyViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = FirebaseFirestore.getInstance()
 
+    private val _celestialObjects = MutableStateFlow<List<CelestialObject>>(emptyList())
+    val celestialObjects: StateFlow<List<CelestialObject>> = _celestialObjects
+
     private val _selectedCelestialObject = MutableStateFlow<CelestialObject?>(null)
     val selectedCelestialObject: StateFlow<CelestialObject?> = _selectedCelestialObject
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
-    fun loadFirstCelestialObject() {
+    fun loadCelestialObjects() {
         viewModelScope.launch {
             try {
                 _isLoading.value = true
-                Timber.d("Fetching celestial object from Firestore")
+                Timber.d("Fetching celestial objects from Firestore")
 
-                // First try to fetch a visible planet (they work best in AR)
-                val snapshot = db.collection("celestial_objects")
-                    .whereEqualTo("type", CelestialObjectType.PLANET.name)
-                    .limit(1)
-                    .get()
-                    .await()
+                // First try to get some visually interesting objects
+                val objectTypes = listOf(
+                    CelestialObjectType.PLANET.name,
+                    CelestialObjectType.STAR.name,
+                    CelestialObjectType.GALAXY.name,
+                    CelestialObjectType.NEBULA.name
+                )
 
-                if (!snapshot.isEmpty) {
-                    val doc = snapshot.documents[0]
-                    parseCelestialObject(doc)?.let { celestialObject ->
-                        _selectedCelestialObject.value = celestialObject
-                        Timber.d("Loaded celestial object: ${celestialObject.name}")
-                    }
-                } else {
-                    // Try stars if no planets found
-                    val starSnapshot = db.collection("celestial_objects")
-                        .whereEqualTo("type", CelestialObjectType.STAR.name)
-                        .limit(1)
-                        .get()
-                        .await()
+                val results = mutableListOf<CelestialObject>()
 
-                    if (!starSnapshot.isEmpty) {
-                        val doc = starSnapshot.documents[0]
-                        parseCelestialObject(doc)?.let { celestialObject ->
-                            _selectedCelestialObject.value = celestialObject
-                            Timber.d("Loaded star object: ${celestialObject.name}")
-                        }
-                    } else {
-                        // Try any celestial object if no planets or stars found
-                        val fallbackSnapshot = db.collection("celestial_objects")
-                            .limit(1)
+                // Get 2 objects of each type
+                for (type in objectTypes) {
+                    try {
+                        val snapshot = db.collection("celestial_objects")
+                            .whereEqualTo("type", type)
+                            .limit(2)
                             .get()
                             .await()
 
-                        if (!fallbackSnapshot.isEmpty) {
-                            val doc = fallbackSnapshot.documents[0]
-                            parseCelestialObject(doc)?.let { celestialObject ->
-                                _selectedCelestialObject.value = celestialObject
-                                Timber.d("Loaded fallback celestial object: ${celestialObject.name}")
+                        snapshot.documents.forEach { doc ->
+                            parseCelestialObject(doc)?.let {
+                                results.add(it)
                             }
-                        } else {
-                            // Create a default object if nothing found
-                            _selectedCelestialObject.value = createDefaultCelestialObject()
-                            Timber.d("Using default celestial object")
                         }
+                    } catch (e: Exception) {
+                        Timber.e(e, "Error fetching objects of type $type")
                     }
                 }
+
+                // If we couldn't get any objects, add a fallback
+                if (results.isEmpty()) {
+                    results.add(createDefaultCelestialObject("Mars"))
+                    results.add(createDefaultCelestialObject("Jupiter"))
+                    results.add(createDefaultCelestialObject("Saturn"))
+                }
+
+                Timber.d("Loaded ${results.size} celestial objects")
+                _celestialObjects.value = results
+
+                // Select the first object by default
+                if (results.isNotEmpty()) {
+                    _selectedCelestialObject.value = results.first()
+                }
+
             } catch (e: Exception) {
-                Timber.e(e, "Error loading celestial object")
-                _selectedCelestialObject.value = createDefaultCelestialObject()
+                Timber.e(e, "Error loading celestial objects")
+                // Use defaults if we can't load from Firestore
+                val defaultObjects = listOf(
+                    createDefaultCelestialObject("Mars"),
+                    createDefaultCelestialObject("Jupiter"),
+                    createDefaultCelestialObject("Saturn")
+                )
+                _celestialObjects.value = defaultObjects
+                _selectedCelestialObject.value = defaultObjects.first()
             } finally {
                 _isLoading.value = false
             }
         }
+    }
+
+    fun selectCelestialObject(celestialObject: CelestialObject) {
+        _selectedCelestialObject.value = celestialObject
     }
 
     private fun parseCelestialObject(doc: com.google.firebase.firestore.DocumentSnapshot): CelestialObject? {
@@ -115,14 +127,37 @@ class ARSkyViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun createDefaultCelestialObject(): CelestialObject {
+    private fun createDefaultCelestialObject(name: String): CelestialObject {
+        val (type, description, imageUrl) = when (name) {
+            "Mars" -> Triple(
+                CelestialObjectType.PLANET,
+                "Mars is the fourth planet from the Sun and the second-smallest planet in the Solar System, being larger than only Mercury.",
+                "https://firebasestorage.googleapis.com/v0/b/skywalk-app-demo.appspot.com/o/celestial_images%2Fmars.jpg?alt=media"
+            )
+            "Jupiter" -> Triple(
+                CelestialObjectType.PLANET,
+                "Jupiter is the fifth planet from the Sun and the largest in the Solar System. It is a gas giant with a mass more than two and a half times that of all the other planets combined.",
+                "https://firebasestorage.googleapis.com/v0/b/skywalk-app-demo.appspot.com/o/celestial_images%2Fjupiter.jpg?alt=media"
+            )
+            "Saturn" -> Triple(
+                CelestialObjectType.PLANET,
+                "Saturn is the sixth planet from the Sun and the second-largest in the Solar System, after Jupiter. It is a gas giant with an average radius of about nine and a half times that of Earth.",
+                "https://firebasestorage.googleapis.com/v0/b/skywalk-app-demo.appspot.com/o/celestial_images%2Fsaturn.jpg?alt=media"
+            )
+            else -> Triple(
+                CelestialObjectType.STAR,
+                "A celestial body in our universe.",
+                "https://firebasestorage.googleapis.com/v0/b/skywalk-app-demo.appspot.com/o/celestial_images%2Fstar.jpg?alt=media"
+            )
+        }
+
         return CelestialObject(
-            id = "default_planet",
-            name = "Mars",
-            description = "Mars is the fourth planet from the Sun and the second-smallest planet in the Solar System, being larger than only Mercury.",
-            summary = "The Red Planet",
-            type = CelestialObjectType.PLANET,
-            imageUrl = "https://firebasestorage.googleapis.com/v0/b/skywalk-app-demo.appspot.com/o/celestial_images%2Fmars.jpg?alt=media"
+            id = "default_$name",
+            name = name,
+            description = description,
+            summary = "The $name",
+            type = type,
+            imageUrl = imageUrl
         )
     }
 }

@@ -1,18 +1,20 @@
+// features/arsky/presentation/ARSkyActivity.kt
 package com.example.skywalk.features.arsky.presentation
 
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import com.bumptech.glide.Glide
 import com.example.skywalk.R
 import com.example.skywalk.features.arsky.presentation.viewmodel.ARSkyViewModel
 import com.example.skywalk.features.encyclopedia.domain.models.CelestialObject
-import com.google.ar.core.Pose
 import com.google.ar.core.TrackingState
 import com.google.ar.sceneform.AnchorNode
 import com.google.ar.sceneform.Node
@@ -23,14 +25,15 @@ import com.google.ar.sceneform.ux.ArFragment
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import kotlin.math.cos
+import kotlin.math.sin
 
 class ARSkyActivity : AppCompatActivity() {
 
     private lateinit var arFragment: ArFragment
     private lateinit var viewModel: ARSkyViewModel
-    private var anchorNode: AnchorNode? = null
-    private var objectNode: Node? = null
-    private var hasPlacedObject = false
+    private var celestialNodes = mutableListOf<Node>()
+    private var hasPlacedObjects = false
     private var frameCount = 0
 
     // UI components
@@ -52,13 +55,11 @@ class ARSkyActivity : AppCompatActivity() {
         backButton = findViewById(R.id.back_button)
         infoPanel = findViewById(R.id.info_panel)
 
+        // Initially hide the info panel
+        infoPanel.visibility = View.GONE
+
         // Initialize AR Fragment
         arFragment = supportFragmentManager.findFragmentById(R.id.ar_fragment) as ArFragment
-
-        // Configure AR scene
-        arFragment.planeDiscoveryController.hide()
-        arFragment.planeDiscoveryController.setInstructionView(null)
-        arFragment.arSceneView.planeRenderer.isEnabled = false
 
         // Initialize ViewModel
         viewModel = ViewModelProvider(this)[ARSkyViewModel::class.java]
@@ -74,8 +75,8 @@ class ARSkyActivity : AppCompatActivity() {
         // Observe ViewModel
         observeViewModel()
 
-        // Load celestial object
-        viewModel.loadFirstCelestialObject()
+        // Load celestial objects
+        viewModel.loadCelestialObjects()
     }
 
     private fun setUpFrameListener() {
@@ -87,10 +88,15 @@ class ARSkyActivity : AppCompatActivity() {
                 // We have good tracking
                 frameCount++
 
-                // Wait a bit before placing the object (give AR time to initialize)
-                if (!hasPlacedObject && viewModel.selectedCelestialObject.value != null && frameCount > 30) {
-                    placeCelestialObjectInSky()
-                    hasPlacedObject = true
+                // Wait a bit before placing the objects (give AR time to initialize)
+                if (!hasPlacedObjects && viewModel.celestialObjects.value.isNotEmpty() && frameCount > 30) {
+                    placeCelestialObjectsInSky()
+                    hasPlacedObjects = true
+                }
+
+                // Update positions of celestial objects based on device orientation
+                if (hasPlacedObjects) {
+                    updateCelestialPositions()
                 }
             }
         }
@@ -98,15 +104,24 @@ class ARSkyActivity : AppCompatActivity() {
 
     private fun observeViewModel() {
         lifecycleScope.launch {
+            viewModel.celestialObjects.collectLatest { celestialObjects ->
+                Timber.d("Received ${celestialObjects.size} celestial objects")
+                if (celestialObjects.isNotEmpty()) {
+                    updateUiWithCelestialObject(celestialObjects.first())
+                }
+            }
+        }
+
+        lifecycleScope.launch {
             viewModel.selectedCelestialObject.collectLatest { celestialObject ->
-                Timber.d("Celestial object received: ${celestialObject?.name}")
-                updateUiWithCelestialObject(celestialObject)
+                celestialObject?.let {
+                    updateUiWithCelestialObject(it)
+                }
             }
         }
 
         lifecycleScope.launch {
             viewModel.isLoading.collectLatest { isLoading ->
-                // Show/hide loading indicator
                 if (isLoading) {
                     Toast.makeText(this@ARSkyActivity, "Loading AR content...", Toast.LENGTH_SHORT).show()
                 }
@@ -128,91 +143,102 @@ class ARSkyActivity : AppCompatActivity() {
         }
     }
 
-    private fun placeCelestialObjectInSky() {
-        val celestialObject = viewModel.selectedCelestialObject.value ?: return
+    private fun placeCelestialObjectsInSky() {
+        val celestialObjects = viewModel.celestialObjects.value
+        if (celestialObjects.isEmpty()) return
 
         try {
-            Timber.d("Placing celestial object in sky: ${celestialObject.name}")
+            Timber.d("Placing ${celestialObjects.size} celestial objects in sky")
 
-            // Get the camera pose
+            // Get the camera
             val frame = arFragment.arSceneView.arFrame
             val camera = frame?.camera ?: return
 
-            if (camera.trackingState != TrackingState.TRACKING) return
+            // Create celestial objects and place them in a dome around the user
+            for (i in celestialObjects.indices) {
+                val celestialObject = celestialObjects[i]
 
-            val cameraPose = camera.pose
+                // Calculate position in a dome pattern
+                // We'll place the objects in different parts of the sky
+                val angle = i * (360.0 / celestialObjects.size)
+                val elevation = 20 + (i % 3) * 20 // Vary elevation between 20-60 degrees
+                val radius = 10f // Distance from user
 
-            // Calculate position 2 meters in front of camera
-            val forward = cameraPose.zAxis
-            val tx = cameraPose.tx() - forward[0] * 2f
-            val ty = cameraPose.ty() - forward[1] * 2f + 0.5f // Slightly above eye level
-            val tz = cameraPose.tz() - forward[2] * 2f
+                val x = radius * cos(Math.toRadians(angle)) * cos(Math.toRadians(elevation.toDouble()))
+                val y = radius * sin(Math.toRadians(elevation.toDouble()))
+                val z = radius * sin(Math.toRadians(angle)) * cos(Math.toRadians(elevation.toDouble()))
 
-            // Create anchor pose
-            val anchorPose = Pose.makeTranslation(tx, ty, tz)
+                // Create a view for the celestial object
+                val viewRenderableFuture = ViewRenderable.builder()
+                    .setView(this, R.layout.celestial_object_card)
+                    .build()
 
-            // Create the anchor
-            val session = arFragment.arSceneView.session ?: return
-            val anchor = session.createAnchor(anchorPose)
+                viewRenderableFuture.thenAccept { renderable ->
+                    // Get the views from the layout
+                    val view = renderable.view
+                    val nameTextView = view.findViewById<TextView>(R.id.celestial_name)
+                    val imageView = view.findViewById<ImageView>(R.id.celestial_image)
 
-            // Create an anchor node
-            val anchorNode = AnchorNode(anchor)
-            anchorNode.setParent(arFragment.arSceneView.scene)
-            this.anchorNode = anchorNode
+                    // Set the name
+                    nameTextView.text = celestialObject.name
 
-            // Create a view for the celestial object
-            val viewRenderableFuture = ViewRenderable.builder()
-                .setView(this, R.layout.celestial_object_card)
-                .build()
+                    // Load the image
+                    val imageUrl = if (celestialObject.imageUrl.isNotEmpty()) {
+                        celestialObject.imageUrl
+                    } else {
+                        celestialObject.thumbnailUrl
+                    }
 
-            viewRenderableFuture.thenAccept { renderable ->
-                // Get the celestial name TextView from the layout
-                val view = renderable.view
-                val nameTextView = view.findViewById<TextView>(R.id.celestial_name)
-                nameTextView.text = celestialObject.name
+                    if (imageUrl.isNotEmpty()) {
+                        // Use Glide to load the image
+                        Glide.with(this)
+                            .load(imageUrl)
+                            .into(imageView)
+                    }
 
-                // Create a node with the renderable
-                val node = Node()
-                node.renderable = renderable
-                node.setParent(anchorNode)
+                    // Create a node
+                    val node = Node()
+                    node.renderable = renderable
+                    node.setParent(arFragment.arSceneView.scene)
 
-                // Set position and scale
-                val scale = 0.5f
-                node.localScale = Vector3(scale, scale, scale)
+                    // Set position
+                    node.worldPosition = Vector3(x.toFloat(), y.toFloat(), z.toFloat())
 
-                // Make the object face the camera
-                val cameraPos = Vector3(cameraPose.tx(), cameraPose.ty(), cameraPose.tz())
-                val objPos = Vector3(tx, ty, tz)
+                    // Add to our list
+                    celestialNodes.add(node)
 
-                val direction = Vector3.subtract(cameraPos, objPos)
-                val lookRotation = Quaternion.lookRotation(direction, Vector3.up())
+                    // Store the celestial object as a tag for use in the tap listener
+                    node.name = i.toString()
 
-                node.localRotation = lookRotation
+                    // Make object face the user (billboard)
+                    val cameraPosition = camera.pose.translation
+                    val direction = Vector3(
+                        cameraPosition[0] - x.toFloat(),
+                        cameraPosition[1] - y.toFloat(),
+                        cameraPosition[2] - z.toFloat()
+                    )
+                    node.worldRotation = Quaternion.lookRotation(direction, Vector3.up())
 
-                // Set up tap listener
-                node.setOnTapListener { _, _ ->
-                    toggleInfoPanel()
+                    // Set tap listener
+                    node.setOnTapListener { hitTestResult, motionEvent ->
+                        Timber.d("Tapped on celestial object: ${celestialObject.name}")
+                        viewModel.selectCelestialObject(celestialObject)
+                        infoPanel.visibility = View.VISIBLE
+                    }
+                }.exceptionally { throwable ->
+                    Timber.e(throwable, "Error creating renderable for ${celestialObject.name}")
+                    null
                 }
-
-                this.objectNode = node
-
-                Toast.makeText(
-                    this,
-                    "Viewing ${celestialObject.name} in AR. Tap to see details.",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }.exceptionally { throwable ->
-                Timber.e(throwable, "Error creating renderable")
-                Toast.makeText(
-                    this,
-                    "Error displaying AR content: ${throwable.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
-                null
             }
 
+            Toast.makeText(
+                this,
+                "Celestial objects placed. Tap on objects to see details.",
+                Toast.LENGTH_LONG
+            ).show()
+
         } catch (e: Exception) {
-            Timber.e(e, "Error placing celestial object in sky")
+            Timber.e(e, "Error placing celestial objects in sky")
             Toast.makeText(
                 this,
                 "Error creating AR experience: ${e.message}",
@@ -221,24 +247,25 @@ class ARSkyActivity : AppCompatActivity() {
         }
     }
 
-    private fun toggleInfoPanel() {
-        if (infoPanel.visibility == View.VISIBLE) {
-            infoPanel.visibility = View.GONE
-        } else {
-            infoPanel.visibility = View.VISIBLE
-        }
-    }
+    private fun updateCelestialPositions() {
+        val camera = arFragment.arSceneView.scene.camera
 
-    override fun onPause() {
-        super.onPause()
-        Timber.d("ARSkyActivity onPause")
+        // Make all nodes face the camera (billboard effect)
+        for (node in celestialNodes) {
+            // Create a direction from the node to the camera
+            val direction = Vector3.subtract(camera.worldPosition, node.worldPosition)
+
+            // Set the node rotation to face the camera
+            node.worldRotation = Quaternion.lookRotation(direction, Vector3.up())
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         // Clean up resources
-        anchorNode?.anchor?.detach()
-        anchorNode = null
-        objectNode = null
+        for (node in celestialNodes) {
+            arFragment.arSceneView.scene.removeChild(node)
+        }
+        celestialNodes.clear()
     }
 }

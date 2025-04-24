@@ -6,33 +6,18 @@
     android:layout_height="match_parent"
     tools:context=".features.arsky.presentation.ARSkyActivity">
 
-    <!-- AR Fragment -->
     <fragment
         android:id="@+id/ar_fragment"
-        android:name="com.google.ar.sceneform.ux.ArFragment"
+        android:name="com.example.skywalk.features.arsky.presentation.components.SkyWalkArFragment"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Back Button -->
-    <Button
-        android:id="@+id/back_button"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        android:text="Back"
-        android:background="@drawable/rounded_button_background"
-        android:textColor="@android:color/white"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <!-- Information Panel (Bottom Sheet) -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/info_panel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@drawable/panel_background"
+        android:background="#99000000"
         android:padding="16dp"
-        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
@@ -41,11 +26,11 @@
             android:id="@+id/object_name"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:textSize="24sp"
-            android:textStyle="bold"
             android:textColor="@android:color/white"
-            app:layout_constraintStart_toStartOf="parent"
+            android:textSize="20sp"
+            android:textStyle="bold"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             tools:text="Mars" />
 
@@ -54,27 +39,37 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:textSize="16sp"
             android:textColor="@android:color/white"
-            app:layout_constraintStart_toStartOf="parent"
+            android:textSize="14sp"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/object_name"
-            tools:text="Type: PLANET" />
+            tools:text="Type: Planet" />
 
         <TextView
             android:id="@+id/object_description"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:maxLines="5"
-            android:textSize="14sp"
+            android:maxLines="3"
             android:textColor="@android:color/white"
-            app:layout_constraintStart_toStartOf="parent"
+            android:textSize="14sp"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/object_type"
-            app:layout_constraintBottom_toBottomOf="parent"
-            tools:text="Mars is the fourth planet from the Sun and the second-smallest planet in the Solar System." />
+            tools:text="Mars is the fourth planet from the Sun..." />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <Button
+        android:id="@+id/back_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:backgroundTint="#99000000"
+        android:text="Back"
+        android:textColor="@android:color/white"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

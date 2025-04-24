@@ -1,3 +1,4 @@
+// features/arsky/presentation/components/SkyWalkArFragment.kt
 package com.example.skywalk.features.arsky.presentation.components
 
 import android.os.Bundle
@@ -30,11 +31,11 @@ class SkyWalkArFragment : ArFragment() {
         }
 
         try {
-            // Use the planeDiscoveryController to hide the hand animation
+            // Disable plane discovery UI
             planeDiscoveryController.hide()
             planeDiscoveryController.setInstructionView(null)
 
-            // Disable the plane renderer to not see the planes
+            // Disable the plane renderer
             arSceneView.planeRenderer.isEnabled = false
 
             Timber.d("ArFragment view setup completed")
@@ -57,10 +58,10 @@ class SkyWalkArFragment : ArFragment() {
             // Configure to use the back camera
             config.focusMode = Config.FocusMode.AUTO
 
-            // We don't need plane detection for sky observations
+            // Disable plane detection
             config.planeFindingMode = Config.PlaneFindingMode.DISABLED
 
-            // We need light estimation for better rendering
+            // Use environmental HDR for better lighting
             config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
 
             Timber.d("Session configuration completed")
@@ -69,14 +70,5 @@ class SkyWalkArFragment : ArFragment() {
         }
 
         return config
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        try {
-            Timber.d("ArFragment view created")
-            super.onViewCreated(view, savedInstanceState)
-        } catch (e: Exception) {
-            Timber.e(e, "Error in onViewCreated: ${e.message}")
-        }
     }
 }
