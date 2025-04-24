@@ -1,6 +1,9 @@
 package com.example.skywalk.core.ui.screens
 
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -9,6 +12,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -20,6 +24,7 @@ import androidx.navigation.navArgument
 //import androidx.navigation.findStartDestination
 import com.example.skywalk.core.navigation.BottomNavItem
 import com.example.skywalk.core.ui.components.BottomNavigationBar
+import com.example.skywalk.features.arsky.presentation.ARSkyActivity
 import com.example.skywalk.features.auth.presentation.screens.ProfileScreen
 import com.example.skywalk.features.auth.presentation.viewmodel.AuthViewModel
 import com.example.skywalk.features.chat.presentation.screens.ChatListScreen
@@ -31,6 +36,7 @@ import com.example.skywalk.features.encyclopedia.presentation.screens.Encycloped
 import com.example.skywalk.features.encyclopedia.presentation.viewmodel.EncyclopediaViewModel
 import com.example.skywalk.features.home.presentation.screens.HomeScreen
 import com.example.skywalk.features.placeholder.presentation.screens.PlaceholderScreen
+import timber.log.Timber
 
 @Composable
 fun MainScreen(
@@ -156,8 +162,29 @@ fun NavigationGraph(
             }
         }
 
+        // Only updating the AR Sky relevant part
         composable("ar_sky") {
-            PlaceholderScreen(title = "AR Sky Explorer")
+            val context = LocalContext.current
+            LaunchedEffect(Unit) {
+                try {
+                    // Start the AR activity
+                    val intent = Intent(context, ARSkyActivity::class.java)
+                    context.startActivity(intent)
+                    // Navigate back to avoid the composable staying in the backstack
+                    navController.popBackStack()
+                } catch (e: Exception) {
+                    Timber.e(e, "Error launching AR activity: ${e.message}")
+                    Toast.makeText(context, "Error starting AR experience. Please try again.", Toast.LENGTH_SHORT).show()
+                    navController.popBackStack()
+                }
+            }
+            // Show a loading screen while transitioning
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
         }
 
         composable("profile") {
