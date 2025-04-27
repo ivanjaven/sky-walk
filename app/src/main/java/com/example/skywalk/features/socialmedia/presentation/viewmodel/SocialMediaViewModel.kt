@@ -1,17 +1,22 @@
-// com/example/skywalk/features/socialmedia/presentation/viewmodel/SocialMediaViewModel.kt
+// SocialMediaViewModel.kt
 package com.example.skywalk.features.socialmedia.presentation.viewmodel
 
 import android.app.Application
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.skywalk.features.chat.data.repository.ChatRepositoryImpl
+import com.example.skywalk.features.chat.domain.usecases.GetOrCreateChatRoomUseCase
 import com.example.skywalk.features.socialmedia.data.repository.SocialMediaRepositoryImpl
 import com.example.skywalk.features.socialmedia.domain.models.Comment
 import com.example.skywalk.features.socialmedia.domain.models.Post
 import com.example.skywalk.features.socialmedia.domain.usecases.*
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -23,6 +28,7 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
 
     // Repository
     private val repository = SocialMediaRepositoryImpl()
+    private val chatRepository = ChatRepositoryImpl()
 
     // Use cases
     private val getPostsUseCase = GetPostsUseCase(repository)
@@ -32,11 +38,15 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     private val getCommentsUseCase = GetCommentsUseCase(repository)
     private val addCommentUseCase = AddCommentUseCase(repository)
     private val getCommentsBatchUseCase = GetCommentsBatchUseCase(repository)
+    private val getOrCreateChatRoomUseCase = GetOrCreateChatRoomUseCase(chatRepository)
     private val _isLoadingMoreComments = MutableStateFlow(false)
     val isLoadingMoreComments: StateFlow<Boolean> = _isLoadingMoreComments
     private val _hasMoreComments = MutableStateFlow(true)
     val hasMoreComments: StateFlow<Boolean> = _hasMoreComments
     private val commentBatchSize = 10
+
+    // Current user ID
+    private val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
 
     // UI states
     private val _uiState = MutableStateFlow<SocialMediaUiState>(SocialMediaUiState.Loading)
@@ -143,7 +153,9 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                         _uiState.value = SocialMediaUiState.Error(e.message ?: "Failed to load posts")
                     }
                     .collect { loadedPosts ->
-                        _posts.value = loadedPosts
+                        // Filter out the current user's posts
+                        val filteredPosts = loadedPosts.filter { it.userId != currentUserId }
+                        _posts.value = filteredPosts
                         _uiState.value = SocialMediaUiState.Success
 
                         if (loadedPosts.isNotEmpty()) {
@@ -178,8 +190,11 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                         isLoading = false
                     }
                     .collect { loadedPosts ->
+                        // Filter out the current user's posts
+                        val filteredPosts = loadedPosts.filter { it.userId != currentUserId }
+
                         val currentPosts = _posts.value.toMutableList()
-                        currentPosts.addAll(loadedPosts)
+                        currentPosts.addAll(filteredPosts)
                         _posts.value = currentPosts
 
                         if (loadedPosts.isNotEmpty()) {
@@ -218,6 +233,38 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
 
     fun clearPostImages() {
         _postImages.value = emptyList()
+    }
+
+    // Function to start a chat with a user
+    fun startChatWithUser(userId: String) {
+        if (userId == currentUserId) {
+            // Cannot chat with yourself
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val result = getOrCreateChatRoomUseCase(userId)
+
+                result.fold(
+                    onSuccess = { chatRoom ->
+                        // Launch the chat room screen
+                        val context = getApplication<Application>()
+                        val intent = Intent("com.example.skywalk.OPEN_CHAT_ROOM")
+                        intent.putExtra("chatRoomId", chatRoom.id)
+                        intent.putExtra("otherUserId", userId)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    },
+                    onFailure = { error ->
+                        Timber.e(error, "Error creating chat room")
+                        // You could add a toast message here if needed
+                    }
+                )
+            } catch (e: Exception) {
+                Timber.e(e, "Exception in startChatWithUser: ${e.message}")
+            }
+        }
     }
 
     fun createPost() {
@@ -301,12 +348,12 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                 result.onFailure { error ->
                     // Revert on failure
                     updatePostLikeStatus(postId, isLiked)
-                    Timber.e(error, "Error toggling like")
+                    Timber.e(error, "Error toggling star")
                 }
             } catch (e: Exception) {
                 // Revert on exception
                 updatePostLikeStatus(postId, isLiked)
-                Timber.e(e, "Error toggling like")
+                Timber.e(e, "Error toggling star")
             } finally {
                 // Clear the operation status
                 likeOperationsMap[postId] = false

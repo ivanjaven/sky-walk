@@ -1,12 +1,10 @@
+// HomeScreen.kt
 package com.example.skywalk.features.home.presentation.screens
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -28,7 +26,7 @@ fun HomeScreen() {
         color = MaterialTheme.colorScheme.background
     ) {
         Column {
-            // App Bar
+            // App Bar (without notification icon)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -41,17 +39,6 @@ fun HomeScreen() {
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.align(Alignment.CenterStart)
                 )
-
-                IconButton(
-                    onClick = { /* Handle notification click */ },
-                    modifier = Modifier.align(Alignment.CenterEnd)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Notifications,
-                        contentDescription = "Notifications",
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
-                }
             }
 
             // Social Media Content

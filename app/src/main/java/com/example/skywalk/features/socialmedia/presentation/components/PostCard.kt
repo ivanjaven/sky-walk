@@ -1,9 +1,11 @@
-// com/example/skywalk/features/socialmedia/presentation/components/PostCard.kt
+// PostCard.kt
 package com.example.skywalk.features.socialmedia.presentation.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,7 +33,7 @@ fun PostCard(
     onLikeClick: () -> Unit,
     onCommentClick: () -> Unit,
     onImageClick: (List<String>, Int) -> Unit,
-    onMoreClick: () -> Unit,
+    onChatClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Get current user ID to check if the current user has liked
@@ -85,11 +87,11 @@ fun PostCard(
                 }
             }
 
-            // More options
-            IconButton(onClick = onMoreClick) {
+            // Chat icon (replacing the more options)
+            IconButton(onClick = onChatClick) {
                 Icon(
-                    painter = painterResource(id = R.drawable.ic_more_horiz),
-                    contentDescription = "More options"
+                    imageVector = Icons.Filled.Email, // Using email icon from Material icons
+                    contentDescription = "Message user"
                 )
             }
         }
@@ -126,15 +128,15 @@ fun PostCard(
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Like button
+            // Star button (replacing Like)
             IconButton(onClick = onLikeClick) {
                 Icon(
                     painter = painterResource(
-                        id = if (post.isLikedByCurrentUser) R.drawable.ic_favorite
-                        else R.drawable.ic_favorite_border
+                        id = if (post.isLikedByCurrentUser) R.drawable.ic_star
+                        else R.drawable.ic_star_border
                     ),
-                    contentDescription = "Like",
-                    tint = if (post.isLikedByCurrentUser) Color.Red else LocalContentColor.current,
+                    contentDescription = if (post.isLikedByCurrentUser) "Unstar" else "Star",
+                    tint = if (post.isLikedByCurrentUser) Color(0xFFFFD700) else LocalContentColor.current, // Gold color for stars
                 )
             }
 
@@ -149,29 +151,29 @@ fun PostCard(
             Spacer(modifier = Modifier.weight(1f))
         }
 
-        // Like count with "You" text for current user
+        // Star count with "You" text for current user
         if (post.likeCount > 0) {
-            val likeText = buildString {
+            val starText = buildString {
                 if (post.isLikedByCurrentUser) {
-                    append("Liked by You")
+                    append("Starred by You")
                     if (post.likeCount > 1) {
-                        val otherLikes = post.likeCount - 1
-                        append(" and $otherLikes ${if (otherLikes == 1) "other" else "others"}")
+                        val otherStars = post.likeCount - 1
+                        append(" and $otherStars ${if (otherStars == 1) "other" else "others"}")
                     }
                 } else if (post.likes.isNotEmpty()) {
                     // Get first 2 usernames to display
                     val usernames = post.likes.values.take(2)
-                    append("Liked by ${usernames.joinToString(" and ")}")
+                    append("Starred by ${usernames.joinToString(" and ")}")
                     if (post.likeCount > usernames.size) {
                         append(" and others")
                     }
                 } else {
-                    append("${post.likeCount} ${if (post.likeCount == 1) "like" else "likes"}")
+                    append("${post.likeCount} ${if (post.likeCount == 1) "star" else "stars"}")
                 }
             }
 
             Text(
-                text = likeText,
+                text = starText,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp)

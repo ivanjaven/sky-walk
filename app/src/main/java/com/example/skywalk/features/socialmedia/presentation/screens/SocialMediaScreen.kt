@@ -1,4 +1,4 @@
-// com/example/skywalk/features/socialmedia/presentation/screens/SocialMediaScreen.kt
+// SocialMediaScreen.kt
 package com.example.skywalk.features.socialmedia.presentation.screens
 
 import androidx.compose.foundation.layout.*
@@ -163,7 +163,7 @@ fun SocialMediaScreen(
                             )
                         }
 
-                        // Posts
+                        // Posts - filtered to exclude current user's posts
                         items(posts, key = { it.id }) { post ->
                             PostCard(
                                 post = post,
@@ -177,7 +177,10 @@ fun SocialMediaScreen(
                                 onImageClick = { imageUrls, initialIndex ->
                                     viewModel.setSelectedImages(imageUrls, initialIndex)
                                 },
-                                onMoreClick = { /* Handle more options */ }
+                                onChatClick = {
+                                    // Start a chat with the post author
+                                    viewModel.startChatWithUser(post.userId)
+                                }
                             )
                         }
 
@@ -230,4 +233,3 @@ fun SpaceEndMessage() {
         }
     }
 }
-
