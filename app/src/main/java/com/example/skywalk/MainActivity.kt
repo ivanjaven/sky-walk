@@ -1,3 +1,4 @@
+// com/example/skywalk/MainActivity.kt
 package com.example.skywalk
 
 import android.os.Bundle
@@ -6,9 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.skywalk.core.ui.screens.MainScreen
@@ -16,6 +15,7 @@ import com.example.skywalk.core.ui.theme.SkyWalkTheme
 import com.example.skywalk.features.auth.presentation.screens.AuthScreen
 import com.example.skywalk.features.auth.presentation.viewmodel.AuthState
 import com.example.skywalk.features.auth.presentation.viewmodel.AuthViewModel
+import com.example.skywalk.features.splash.presentation.screens.SplashScreen
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.firebase.auth.FirebaseAuth
@@ -38,6 +38,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val authViewModel: AuthViewModel = viewModel()
             val authState by authViewModel.authState.collectAsState()
+
+            // Add state for splash screen
+            var showSplash by remember { mutableStateOf(true) }
 
             // Log auth state changes for debugging
             LaunchedEffect(authState) {
@@ -65,20 +68,28 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    when (authState) {
-                        is AuthState.Authenticated -> {
-                            MainScreen(
-                                onSignOut = {
-                                    // This provides a redundant way to sign out
-                                    authViewModel.signOut()
-                                }
-                            )
-                        }
-                        else -> {
-                            AuthScreen(
-                                onAuthenticated = { /* Navigation handled by state change */ },
-                                googleSignInClient = googleSignInClient
-                            )
+                    if (showSplash) {
+                        // Show splash screen
+                        SplashScreen(
+                            onSplashFinished = { showSplash = false }
+                        )
+                    } else {
+                        // Show main app content after splash
+                        when (authState) {
+                            is AuthState.Authenticated -> {
+                                MainScreen(
+                                    onSignOut = {
+                                        // This provides a redundant way to sign out
+                                        authViewModel.signOut()
+                                    }
+                                )
+                            }
+                            else -> {
+                                AuthScreen(
+                                    onAuthenticated = { /* Navigation handled by state change */ },
+                                    googleSignInClient = googleSignInClient
+                                )
+                            }
                         }
                     }
                 }
