@@ -1,4 +1,3 @@
-// features/arsky/presentation/ARSkyActivity.kt
 package com.example.skywalk.features.arsky.presentation
 
 import android.os.Bundle
@@ -15,6 +14,7 @@ import com.bumptech.glide.Glide
 import com.example.skywalk.R
 import com.example.skywalk.features.arsky.presentation.viewmodel.ARSkyViewModel
 import com.example.skywalk.features.encyclopedia.domain.models.CelestialObject
+import com.google.ar.core.Pose
 import com.google.ar.core.TrackingState
 import com.google.ar.sceneform.AnchorNode
 import com.google.ar.sceneform.Node
@@ -33,6 +33,7 @@ class ARSkyActivity : AppCompatActivity() {
     private lateinit var arFragment: ArFragment
     private lateinit var viewModel: ARSkyViewModel
     private var celestialNodes = mutableListOf<Node>()
+    private var anchorNode: AnchorNode? = null
     private var hasPlacedObjects = false
     private var frameCount = 0
 
@@ -94,10 +95,31 @@ class ARSkyActivity : AppCompatActivity() {
                     hasPlacedObjects = true
                 }
 
-                // Update positions of celestial objects based on device orientation
-                if (hasPlacedObjects) {
-                    updateCelestialPositions()
-                }
+                // Keep objects facing the camera but maintain their positions
+                updateObjectOrientations()
+            }
+        }
+    }
+
+    private fun updateObjectOrientations() {
+        val camera = arFragment.arSceneView.scene.camera
+
+        // Make all celestial objects face the camera (billboard effect)
+        // without changing their positions
+        for (node in celestialNodes) {
+            try {
+                // Get the direction from the node to the camera
+                val nodeWorldPosition = node.worldPosition
+                val directionToCamera = Vector3.subtract(camera.worldPosition, nodeWorldPosition)
+
+                // Keep the y-component of the node's up vector to avoid tilting
+                // This keeps text upright while still facing camera
+                val up = Vector3(0f, 1f, 0f)
+
+                // Apply the look rotation
+                node.worldRotation = Quaternion.lookRotation(directionToCamera, up)
+            } catch (e: Exception) {
+                Timber.e(e, "Error updating node orientation: ${e.message}")
             }
         }
     }
@@ -150,19 +172,35 @@ class ARSkyActivity : AppCompatActivity() {
         try {
             Timber.d("Placing ${celestialObjects.size} celestial objects in sky")
 
-            // Get the camera
+            // Get the camera position
             val frame = arFragment.arSceneView.arFrame
             val camera = frame?.camera ?: return
+            val cameraPose = camera.pose
+
+            // Create a more stable anchor slightly in front of the camera
+            // This helps prevent the anchor from being lost
+            val forward = cameraPose.zAxis
+            val anchorPose = Pose.makeTranslation(
+                cameraPose.tx() - forward[0] * 0.5f,
+                cameraPose.ty() - forward[1] * 0.5f,
+                cameraPose.tz() - forward[2] * 0.5f
+            )
+
+            // Create and track our anchor node
+            val anchor = arFragment.arSceneView.session?.createAnchor(anchorPose)
+            anchorNode = AnchorNode(anchor).apply {
+                isEnabled = true
+                setParent(arFragment.arSceneView.scene)
+            }
 
             // Create celestial objects and place them in a dome around the user
             for (i in celestialObjects.indices) {
                 val celestialObject = celestialObjects[i]
 
                 // Calculate position in a dome pattern
-                // We'll place the objects in different parts of the sky
                 val angle = i * (360.0 / celestialObjects.size)
                 val elevation = 20 + (i % 3) * 20 // Vary elevation between 20-60 degrees
-                val radius = 10f // Distance from user
+                val radius = 7f // Reduced distance from user for better visibility
 
                 val x = radius * cos(Math.toRadians(angle)) * cos(Math.toRadians(elevation.toDouble()))
                 val y = radius * sin(Math.toRadians(elevation.toDouble()))
@@ -196,28 +234,28 @@ class ARSkyActivity : AppCompatActivity() {
                             .into(imageView)
                     }
 
-                    // Create a node
-                    val node = Node()
-                    node.renderable = renderable
-                    node.setParent(arFragment.arSceneView.scene)
+                    // Create a node and attach it to the anchor node
+                    val node = Node().apply {
+                        this.renderable = renderable
+                        setParent(anchorNode)
+                        localPosition = Vector3(x.toFloat(), y.toFloat(), z.toFloat())
+                        name = i.toString()
 
-                    // Set position
-                    node.worldPosition = Vector3(x.toFloat(), y.toFloat(), z.toFloat())
+                        // Initial orientation to face camera - will be updated in updateObjectOrientations()
+                        val cameraPosition = camera.pose.translation
+                        val direction = Vector3(
+                            cameraPosition[0] - x.toFloat(),
+                            0f,  // Keep Y at 0 to prevent tilting
+                            cameraPosition[2] - z.toFloat()
+                        )
+                        localRotation = Quaternion.lookRotation(direction, Vector3.up())
+
+                        // Make the node persistent
+                        isEnabled = true
+                    }
 
                     // Add to our list
                     celestialNodes.add(node)
-
-                    // Store the celestial object as a tag for use in the tap listener
-                    node.name = i.toString()
-
-                    // Make object face the user (billboard)
-                    val cameraPosition = camera.pose.translation
-                    val direction = Vector3(
-                        cameraPosition[0] - x.toFloat(),
-                        cameraPosition[1] - y.toFloat(),
-                        cameraPosition[2] - z.toFloat()
-                    )
-                    node.worldRotation = Quaternion.lookRotation(direction, Vector3.up())
 
                     // Set tap listener
                     node.setOnTapListener { hitTestResult, motionEvent ->
@@ -247,25 +285,18 @@ class ARSkyActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateCelestialPositions() {
-        val camera = arFragment.arSceneView.scene.camera
-
-        // Make all nodes face the camera (billboard effect)
-        for (node in celestialNodes) {
-            // Create a direction from the node to the camera
-            val direction = Vector3.subtract(camera.worldPosition, node.worldPosition)
-
-            // Set the node rotation to face the camera
-            node.worldRotation = Quaternion.lookRotation(direction, Vector3.up())
-        }
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         // Clean up resources
         for (node in celestialNodes) {
-            arFragment.arSceneView.scene.removeChild(node)
+            // Remove from parent
+            node.parent?.removeChild(node)
         }
         celestialNodes.clear()
+
+        // Clean up anchor node
+        anchorNode?.anchor?.detach()
+        anchorNode?.setParent(null)
+        anchorNode = null
     }
 }

@@ -36,7 +36,7 @@ fun HomeScreen() {
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 Text(
-                    text = "SkyWalk Social",
+                    text = "SkyWalk",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
