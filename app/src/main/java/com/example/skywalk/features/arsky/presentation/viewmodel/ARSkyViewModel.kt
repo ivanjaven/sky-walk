@@ -30,39 +30,31 @@ class ARSkyViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 _isLoading.value = true
-                Timber.d("Fetching celestial objects from Firestore")
+                Timber.d("Fetching ALL celestial objects from Firestore")
 
-                // First try to get some visually interesting objects
-                val objectTypes = listOf(
-                    CelestialObjectType.PLANET.name,
-                    CelestialObjectType.STAR.name,
-                    CelestialObjectType.GALAXY.name,
-                    CelestialObjectType.NEBULA.name
-                )
-
+                // Get ALL celestial objects at once without any limit
                 val results = mutableListOf<CelestialObject>()
 
-                // Get 2 objects of each type
-                for (type in objectTypes) {
-                    try {
-                        val snapshot = db.collection("celestial_objects")
-                            .whereEqualTo("type", type)
-                            .limit(2)
-                            .get()
-                            .await()
+                try {
+                    val snapshot = db.collection("celestial_objects")
+                        .get()
+                        .await()
 
-                        snapshot.documents.forEach { doc ->
-                            parseCelestialObject(doc)?.let {
-                                results.add(it)
-                            }
+                    Timber.d("Received ${snapshot.documents.size} documents from Firestore")
+
+                    snapshot.documents.forEach { doc ->
+                        parseCelestialObject(doc)?.let {
+                            results.add(it)
+                            Timber.d("Added object: ${it.name}, type: ${it.type}")
                         }
-                    } catch (e: Exception) {
-                        Timber.e(e, "Error fetching objects of type $type")
                     }
+                } catch (e: Exception) {
+                    Timber.e(e, "Error fetching all celestial objects")
                 }
 
                 // If we couldn't get any objects, add a fallback
                 if (results.isEmpty()) {
+                    Timber.d("No objects found in database, adding fallback objects")
                     results.add(createDefaultCelestialObject("Mars"))
                     results.add(createDefaultCelestialObject("Jupiter"))
                     results.add(createDefaultCelestialObject("Saturn"))
