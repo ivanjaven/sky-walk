@@ -1,4 +1,3 @@
-// SocialMediaScreen.kt
 package com.example.skywalk.features.socialmedia.presentation.screens
 
 import androidx.compose.foundation.layout.*
@@ -20,12 +19,14 @@ import com.example.skywalk.features.socialmedia.presentation.viewmodel.SocialMed
 import com.google.accompanist.swiperefresh.SwipeRefresh
 import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SocialMediaScreen(
     viewModel: SocialMediaViewModel,
-    currentUser: User?
+    currentUser: User?,
+    onNavigateToChat: (String, String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val posts by viewModel.posts.collectAsState()
@@ -43,6 +44,7 @@ fun SocialMediaScreen(
     val postCreationSuccess by viewModel.postCreationSuccess.collectAsState()
     val isLoadingComments by viewModel.isLoadingComments.collectAsState()
     val commentError by viewModel.commentError.collectAsState()
+    val chatNavData by viewModel.chatNavigationData.collectAsState()
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -53,6 +55,15 @@ fun SocialMediaScreen(
             // Show success message and trigger refresh
             viewModel.refresh()
             viewModel.clearPostCreationSuccess()
+        }
+    }
+
+    // Handle chat navigation
+    LaunchedEffect(chatNavData) {
+        chatNavData?.let { navData ->
+            Timber.d("Navigating to chat room: ${navData.chatRoomId} with user: ${navData.otherUserId}")
+            onNavigateToChat(navData.chatRoomId, navData.otherUserId)
+            viewModel.clearChatNavigationData()
         }
     }
 
@@ -163,7 +174,7 @@ fun SocialMediaScreen(
                             )
                         }
 
-                        // Posts - filtered to exclude current user's posts
+                        // Posts
                         items(posts, key = { it.id }) { post ->
                             PostCard(
                                 post = post,

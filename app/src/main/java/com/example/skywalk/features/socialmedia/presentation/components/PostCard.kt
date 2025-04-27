@@ -1,4 +1,3 @@
-// PostCard.kt
 package com.example.skywalk.features.socialmedia.presentation.components
 
 import androidx.compose.foundation.clickable
@@ -90,7 +89,7 @@ fun PostCard(
             // Chat icon (replacing the more options)
             IconButton(onClick = onChatClick) {
                 Icon(
-                    imageVector = Icons.Filled.Email, // Using email icon from Material icons
+                    imageVector = Icons.Filled.Email,
                     contentDescription = "Message user"
                 )
             }

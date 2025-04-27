@@ -1,4 +1,3 @@
-// HomeScreen.kt
 package com.example.skywalk.features.home.presentation.screens
 
 import androidx.compose.foundation.layout.*
@@ -11,7 +10,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.example.skywalk.features.auth.presentation.viewmodel.AuthViewModel
+import com.example.skywalk.features.chat.presentation.screens.ChatRoomScreen
 import com.example.skywalk.features.socialmedia.presentation.screens.SocialMediaScreen
 import com.example.skywalk.features.socialmedia.presentation.viewmodel.SocialMediaViewModel
 
@@ -19,8 +22,8 @@ import com.example.skywalk.features.socialmedia.presentation.viewmodel.SocialMed
 fun HomeScreen() {
     val authViewModel: AuthViewModel = viewModel()
     val socialMediaViewModel: SocialMediaViewModel = viewModel()
-
     val currentUser by authViewModel.currentUser.collectAsState(initial = null)
+    val navController = rememberNavController()
 
     Surface(
         color = MaterialTheme.colorScheme.background
@@ -41,11 +44,39 @@ fun HomeScreen() {
                 )
             }
 
-            // Social Media Content
-            SocialMediaScreen(
-                viewModel = socialMediaViewModel,
-                currentUser = currentUser
-            )
+            // Set up navigation with NavHost
+            NavHost(
+                navController = navController,
+                startDestination = "social_feed"
+            ) {
+                composable("social_feed") {
+                    // Social Media Content
+                    SocialMediaScreen(
+                        viewModel = socialMediaViewModel,
+                        currentUser = currentUser,
+                        onNavigateToChat = { chatRoomId, otherUserId ->
+                            // Navigate to chat room with parameters
+                            navController.navigate("chat_room/$chatRoomId/$otherUserId")
+                        }
+                    )
+                }
+
+                // Add a route for the chat room
+                composable(
+                    route = "chat_room/{chatRoomId}/{otherUserId}"
+                ) { backStackEntry ->
+                    val chatRoomId = backStackEntry.arguments?.getString("chatRoomId") ?: ""
+                    val otherUserId = backStackEntry.arguments?.getString("otherUserId") ?: ""
+
+                    ChatRoomScreen(
+                        chatRoomId = chatRoomId,
+                        otherUserId = otherUserId,
+                        onNavigateBack = {
+                            navController.popBackStack()
+                        }
+                    )
+                }
+            }
         }
     }
 }

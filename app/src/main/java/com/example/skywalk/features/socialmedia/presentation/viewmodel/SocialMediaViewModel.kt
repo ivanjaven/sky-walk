@@ -1,8 +1,7 @@
-// SocialMediaViewModel.kt
+// com/example/skywalk/features/socialmedia/presentation/viewmodel/SocialMediaViewModel.kt
 package com.example.skywalk.features.socialmedia.presentation.viewmodel
 
 import android.app.Application
-import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -16,7 +15,6 @@ import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -116,6 +114,11 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     // Comment error state
     private val _commentError = MutableStateFlow<String?>(null)
     val commentError: StateFlow<String?> = _commentError
+
+    // Chat navigation data
+    data class ChatNavigationData(val chatRoomId: String, val otherUserId: String)
+    private val _chatNavigationData = MutableStateFlow<ChatNavigationData?>(null)
+    val chatNavigationData: StateFlow<ChatNavigationData?> = _chatNavigationData
 
     init {
         loadInitialPosts()
@@ -248,23 +251,23 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
 
                 result.fold(
                     onSuccess = { chatRoom ->
-                        // Launch the chat room screen
-                        val context = getApplication<Application>()
-                        val intent = Intent("com.example.skywalk.OPEN_CHAT_ROOM")
-                        intent.putExtra("chatRoomId", chatRoom.id)
-                        intent.putExtra("otherUserId", userId)
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(intent)
+                        _chatNavigationData.value = ChatNavigationData(
+                            chatRoomId = chatRoom.id,
+                            otherUserId = userId
+                        )
                     },
                     onFailure = { error ->
-                        Timber.e(error, "Error creating chat room")
-                        // You could add a toast message here if needed
+                        Timber.e(error, "Error creating chat room: ${error.message}")
                     }
                 )
             } catch (e: Exception) {
                 Timber.e(e, "Exception in startChatWithUser: ${e.message}")
             }
         }
+    }
+
+    fun clearChatNavigationData() {
+        _chatNavigationData.value = null
     }
 
     fun createPost() {
