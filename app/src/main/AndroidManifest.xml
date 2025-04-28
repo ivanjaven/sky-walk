@@ -47,12 +47,18 @@
             </intent-filter>
         </activity>
 
-        <!-- AR Sky Activity -->
+<!--        &lt;!&ndash; AR Sky Activity &ndash;&gt;-->
+<!--        <activity-->
+<!--            android:name=".features.arsky.presentation.ARSkyActivity"-->
+<!--            android:exported="false"-->
+<!--            android:label="AR Sky Explorer"-->
+<!--            android:theme="@style/Theme.MaterialComponents.NoActionBar" />-->
+
         <activity
-            android:name=".features.arsky.presentation.ARSkyActivity"
+            android:name=".features.ar.presentation.ARActivity"
             android:exported="false"
-            android:label="AR Sky Explorer"
-            android:theme="@style/Theme.MaterialComponents.NoActionBar" />
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
 
     </application>
 

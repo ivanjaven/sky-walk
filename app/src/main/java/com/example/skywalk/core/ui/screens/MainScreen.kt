@@ -162,13 +162,39 @@ fun NavigationGraph(
             }
         }
 
-        // Only updating the AR Sky relevant part
+            // OLD
+//        // Only updating the AR Sky relevant part
+//        composable("ar_sky") {
+//            val context = LocalContext.current
+//            LaunchedEffect(Unit) {
+//                try {
+//                    // Start the AR activity
+//                    val intent = Intent(context, ARSkyActivity::class.java)
+//                    context.startActivity(intent)
+//                    // Navigate back to avoid the composable staying in the backstack
+//                    navController.popBackStack()
+//                } catch (e: Exception) {
+//                    Timber.e(e, "Error launching AR activity: ${e.message}")
+//                    Toast.makeText(context, "Error starting AR experience. Please try again.", Toast.LENGTH_SHORT).show()
+//                    navController.popBackStack()
+//                }
+//            }
+//            // Show a loading screen while transitioning
+//            Box(
+//                modifier = Modifier.fillMaxSize(),
+//                contentAlignment = Alignment.Center
+//            ) {
+//                CircularProgressIndicator()
+//            }
+//        }
+
+        // NEW
         composable("ar_sky") {
             val context = LocalContext.current
             LaunchedEffect(Unit) {
                 try {
-                    // Start the AR activity
-                    val intent = Intent(context, ARSkyActivity::class.java)
+                    // Start our new AR activity instead of ARSkyActivity
+                    val intent = Intent(context, com.example.skywalk.features.ar.presentation.ARActivity::class.java)
                     context.startActivity(intent)
                     // Navigate back to avoid the composable staying in the backstack
                     navController.popBackStack()
