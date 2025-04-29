@@ -1,13 +1,16 @@
 package com.example.skywalk.features.ar.presentation
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
-import android.hardware.SensorManager
-import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
+import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -29,32 +32,30 @@ import com.example.skywalk.features.ar.presentation.components.SkyOverlayView
 import com.example.skywalk.features.ar.presentation.viewmodel.AstronomyViewModel
 import com.google.common.util.concurrent.ListenableFuture
 import timber.log.Timber
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
 
-class ARActivity : ComponentActivity(), LocationListener {
+class ARActivity : ComponentActivity() {
     // View references
     private lateinit var previewView: PreviewView
     private lateinit var skyOverlayView: SkyOverlayView
     private lateinit var backButton: ImageButton
+    private lateinit var captureButton: ImageButton  // New capture button
 
     // Camera components
     private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
     private lateinit var cameraExecutor: ExecutorService
 
-    // Viewmodel and system services
+    // Viewmodel
     private lateinit var astronomyViewModel: AstronomyViewModel
-    private lateinit var locationManager: LocationManager
-
-    // Track whether the camera was successfully started
-    private var cameraStarted = false
-
-    // Location settings
-    private var lastKnownLocation: Location? = null
-    private val MIN_LOCATION_UPDATE_INTERVAL_MS = 30000L  // 30 seconds
-    private val MIN_LOCATION_DISTANCE_M = 100f            // 100 meters
 
     // Gesture handling
     private lateinit var gestureDetector: GestureDetectorCompat
@@ -68,30 +69,23 @@ class ARActivity : ComponentActivity(), LocationListener {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val hasCamera = permissions[Manifest.permission.CAMERA] == true
-        val hasLocation = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
 
-        when {
-            hasCamera && hasLocation -> {
-                startCamera()
-                startLocationUpdates()
-            }
-            hasCamera -> {
-                startCamera()
-                Toast.makeText(this, "Using approximate location - accuracy may be reduced",
-                    Toast.LENGTH_SHORT).show()
-            }
-            hasLocation -> {
-                startLocationUpdates()
-                Toast.makeText(this, "Camera permission denied. Sky overlay won't work properly.",
-                    Toast.LENGTH_SHORT).show()
-                finish()
-            }
-            else -> {
-                Toast.makeText(this, "Camera and location permissions are required",
-                    Toast.LENGTH_LONG).show()
-                finish()
-            }
+        if (hasCamera) {
+            startCamera()
+        } else {
+            Toast.makeText(this, "Camera permission is required for AR view", Toast.LENGTH_LONG).show()
+            finish()
+        }
+    }
+
+    // Storage permission launcher for saving images
+    private val requestStoragePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            captureAndSaveImage()
+        } else {
+            Toast.makeText(this, "Storage permission denied. Cannot save image.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -115,12 +109,10 @@ class ARActivity : ComponentActivity(), LocationListener {
         previewView = findViewById(R.id.previewView)
         skyOverlayView = findViewById(R.id.skyOverlayView)
         backButton = findViewById(R.id.backButton)
+        captureButton = findViewById(R.id.captureButton)  // Make sure to add this in your layout
 
         // Initialize ViewModel
         astronomyViewModel = AstronomyViewModel(application)
-
-        // Get location service
-        locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
         // Initialize camera executor
         cameraExecutor = Executors.newSingleThreadExecutor()
@@ -136,8 +128,100 @@ class ARActivity : ComponentActivity(), LocationListener {
             finish()
         }
 
-        // Check and request permissions
-        checkPermissions()
+        // Set up capture button
+        captureButton.setOnClickListener {
+            checkStoragePermissionAndCapture()
+        }
+
+        // Check and request camera permission
+        checkCameraPermission()
+
+        // Try to get the location from intent extras
+        intent.extras?.let {
+            if (it.containsKey("latitude") && it.containsKey("longitude")) {
+                val latitude = it.getDouble("latitude")
+                val longitude = it.getDouble("longitude")
+                astronomyViewModel.setLocation(latitude, longitude)
+            }
+        }
+    }
+
+    private fun checkStoragePermissionAndCapture() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // For Android 10 and above, we don't need WRITE_EXTERNAL_STORAGE permission
+            captureAndSaveImage()
+        } else {
+            // For older versions, we need to check and request the permission
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                captureAndSaveImage()
+            } else {
+                requestStoragePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+        }
+    }
+
+    private fun captureAndSaveImage() {
+        val bitmap = skyOverlayView.captureView()
+        if (bitmap != null) {
+            saveImageToStorage(bitmap)
+        } else {
+            Toast.makeText(this, "Failed to capture image", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun saveImageToStorage(bitmap: Bitmap) {
+        // Generate a file name with timestamp
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val filename = "SkyWalk_$timestamp.jpg"
+
+        var outputStream: OutputStream? = null
+        var uri: Uri? = null
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // For Android 10 and above, use MediaStore
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/SkyWalk")
+                }
+
+                contentResolver.also { resolver ->
+                    uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                    outputStream = uri?.let { resolver.openOutputStream(it) }
+                }
+            } else {
+                // For older Android versions
+                val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).toString() + "/SkyWalk"
+                val file = File(imagesDir)
+                if (!file.exists()) {
+                    file.mkdirs()
+                }
+
+                val image = File(imagesDir, filename)
+                outputStream = FileOutputStream(image)
+
+                // Add the image to the gallery
+                val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
+                uri = Uri.fromFile(image)
+                mediaScanIntent.data = uri
+                sendBroadcast(mediaScanIntent)
+            }
+
+            outputStream?.use {
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
+                Toast.makeText(this, "Image saved to gallery", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Error saving image")
+            Toast.makeText(this, "Failed to save image: ${e.message}", Toast.LENGTH_SHORT).show()
+        } finally {
+            outputStream?.close()
+        }
     }
 
     private fun setupGestureDetectors() {
@@ -174,14 +258,10 @@ class ARActivity : ComponentActivity(), LocationListener {
 
     private fun updateFieldOfView() {
         // Calculate new field of view - more zoom = smaller FOV
-        // The base FOV is 60 degrees. Zoom of 0.8 = 75 degrees, zoom of 1.5 = 40 degrees
         val baseFov = 60f
         val newFov = baseFov / currentZoom
 
-        // TODO: Update FOV in ViewModel when implemented
-        // For now, just show a toast
-        Toast.makeText(this, "Zoom: ${String.format("%.1fx", currentZoom)}",
-            Toast.LENGTH_SHORT).show()
+        astronomyViewModel.setFieldOfView(newFov)
     }
 
     private fun toggleSystemUi() {
@@ -199,27 +279,11 @@ class ARActivity : ComponentActivity(), LocationListener {
         }
     }
 
-    private fun checkPermissions() {
-        val neededPermissions = mutableListOf<String>()
-
-        // Check camera permission
+    private fun checkCameraPermission() {
         if (!PermissionHelper.hasCameraPermission(this)) {
-            neededPermissions.add(Manifest.permission.CAMERA)
-        }
-
-        // Check location permissions
-        if (!PermissionHelper.hasLocationPermission(this)) {
-            neededPermissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
-            neededPermissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
-        }
-
-        if (neededPermissions.isNotEmpty()) {
-            // Need to request permissions
-            requestPermissionsLauncher.launch(neededPermissions.toTypedArray())
+            requestPermissionsLauncher.launch(arrayOf(Manifest.permission.CAMERA))
         } else {
-            // Already have permissions
             startCamera()
-            startLocationUpdates()
         }
     }
 
@@ -245,7 +309,6 @@ class ARActivity : ComponentActivity(), LocationListener {
                 // Bind use cases to camera
                 cameraProvider.bindToLifecycle(this, cameraSelector, preview)
 
-                cameraStarted = true
                 Timber.d("Camera started successfully")
 
             } catch (e: Exception) {
@@ -254,81 +317,6 @@ class ARActivity : ComponentActivity(), LocationListener {
                     Toast.LENGTH_SHORT).show()
             }
         }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun startLocationUpdates() {
-        if (!PermissionHelper.hasLocationPermission(this)) {
-            Timber.d("No location permission, using default location")
-            return
-        }
-
-        try {
-            // Get the best last known location from available providers
-            val providers = locationManager.getProviders(true)
-
-            for (provider in providers) {
-                val location = locationManager.getLastKnownLocation(provider)
-                if (location != null && (lastKnownLocation == null ||
-                            location.accuracy < lastKnownLocation!!.accuracy)) {
-                    lastKnownLocation = location
-                }
-            }
-
-            // Use the best location we found
-            lastKnownLocation?.let {
-                updateLocation(it)
-                Timber.d("Using last known location: ${it.latitude}, ${it.longitude}")
-            }
-
-            // Request location updates from GPS
-            locationManager.requestLocationUpdates(
-                LocationManager.GPS_PROVIDER,
-                MIN_LOCATION_UPDATE_INTERVAL_MS,
-                MIN_LOCATION_DISTANCE_M,
-                this
-            )
-
-            // Also request network location updates as backup
-            if (locationManager.getProviders(true).contains(LocationManager.NETWORK_PROVIDER)) {
-                locationManager.requestLocationUpdates(
-                    LocationManager.NETWORK_PROVIDER,
-                    MIN_LOCATION_UPDATE_INTERVAL_MS,
-                    MIN_LOCATION_DISTANCE_M,
-                    this
-                )
-            }
-
-        } catch (e: SecurityException) {
-            Timber.e(e, "Security exception when accessing location")
-        } catch (e: Exception) {
-            Timber.e(e, "Error getting location")
-            Toast.makeText(this, "Unable to access location: ${e.message}",
-                Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun updateLocation(location: Location) {
-        lastKnownLocation = location
-        astronomyViewModel.setLocation(location.latitude, location.longitude)
-    }
-
-    override fun onLocationChanged(location: Location) {
-        Timber.d("Location update: ${location.latitude}, ${location.longitude}")
-        updateLocation(location)
-    }
-
-    // Required LocationListener interface methods
-    override fun onProviderDisabled(provider: String) {
-        Timber.d("Location provider disabled: $provider")
-    }
-
-    override fun onProviderEnabled(provider: String) {
-        Timber.d("Location provider enabled: $provider")
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onStatusChanged(provider: String, status: Int, extras: Bundle?) {
-        Timber.d("Location provider status changed: $provider, status: $status")
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -341,11 +329,6 @@ class ARActivity : ComponentActivity(), LocationListener {
     override fun onResume() {
         super.onResume()
 
-        // Re-register for location updates
-        if (PermissionHelper.hasLocationPermission(this)) {
-            startLocationUpdates()
-        }
-
         // Reset UI visibility
         window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -355,16 +338,8 @@ class ARActivity : ComponentActivity(), LocationListener {
                 or View.SYSTEM_UI_FLAG_FULLSCREEN)
     }
 
-    override fun onPause() {
-        super.onPause()
-
-        // Remove location updates to conserve battery
-        locationManager.removeUpdates(this)
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
-        locationManager.removeUpdates(this)
     }
 }

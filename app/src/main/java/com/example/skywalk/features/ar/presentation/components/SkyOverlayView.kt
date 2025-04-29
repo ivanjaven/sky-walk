@@ -15,7 +15,6 @@ import com.example.skywalk.features.ar.domain.models.Vector3
 import com.example.skywalk.features.ar.presentation.viewmodel.AstronomyViewModel
 import com.example.skywalk.features.ar.utils.AstronomyUtils
 import timber.log.Timber
-import kotlin.math.abs
 import kotlin.math.min
 
 class SkyOverlayView @JvmOverloads constructor(
@@ -31,17 +30,10 @@ class SkyOverlayView @JvmOverloads constructor(
 
     private val textPaint = Paint().apply {
         isAntiAlias = true
-        textSize = 32f
+        textSize = 36f
         color = Color.WHITE
         setShadowLayer(5f, 0f, 0f, Color.BLACK)
         textAlign = Paint.Align.CENTER
-    }
-
-    private val debugPaint = Paint().apply {
-        isAntiAlias = true
-        textSize = 24f
-        color = Color.GREEN
-        setShadowLayer(3f, 0f, 0f, Color.BLACK)
     }
 
     // State tracking
@@ -57,13 +49,8 @@ class SkyOverlayView @JvmOverloads constructor(
     // Track last screen positions of objects
     private val lastScreenPositions = mutableMapOf<String, Pair<Float, Float>>()
 
-    // Debug settings
-    private val DEBUG_MODE = true
-
-    // Frame rate tracking
-    private var frameCount = 0
-    private var lastFpsUpdateTime = System.currentTimeMillis()
-    private var fps = 0
+    // Debug mode disabled for clean render
+    private val DEBUG_MODE = false
 
     fun initialize(viewModel: AstronomyViewModel) {
         this.viewModel = viewModel
@@ -101,17 +88,17 @@ class SkyOverlayView @JvmOverloads constructor(
                     // Load the bitmap
                     val originalBitmap = BitmapFactory.decodeResource(resources, obj.imageResourceId)
 
-                    // Scale the image based on object type
+                    // Scale the image based on object type - now 3x larger
                     val scaleFactor = when (obj.name) {
-                        "Sun" -> 0.15f
-                        "Moon" -> 0.12f
-                        "Jupiter" -> 0.08f
-                        "Saturn" -> 0.08f
-                        else -> 0.06f
+                        "Sun" -> 0.45f  // 3x larger than before
+                        "Moon" -> 0.36f  // 3x larger than before
+                        "Jupiter" -> 0.24f  // 3x larger than before
+                        "Saturn" -> 0.24f  // 3x larger than before
+                        else -> 0.18f  // 3x larger than before
                     }
 
                     val minDimension = min(viewWidth, viewHeight)
-                    val size = (minDimension * scaleFactor).toInt().coerceAtLeast(40)
+                    val size = (minDimension * scaleFactor).toInt().coerceAtLeast(120)
 
                     val scaledBitmap = Bitmap.createScaledBitmap(
                         originalBitmap,
@@ -145,27 +132,13 @@ class SkyOverlayView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Update FPS counter
-        frameCount++
-        val now = System.currentTimeMillis()
-        if (now - lastFpsUpdateTime > 1000) {
-            fps = frameCount
-            frameCount = 0
-            lastFpsUpdateTime = now
-        }
-
         // Get current orientation vectors
         val lookVector = deviceLookVector
         val upVector = deviceUpVector
 
+        // Skip drawing if we don't have orientation data
         if (lookVector == null || upVector == null) {
-            drawDebugInfo(canvas, "Waiting for orientation data...")
             return
-        }
-
-        // Draw reference grid for debugging if needed
-        if (DEBUG_MODE) {
-            drawDebugGrid(canvas)
         }
 
         // Get field of view
@@ -192,17 +165,6 @@ class SkyOverlayView @JvmOverloads constructor(
             if (screenCoordinates != null) {
                 val (screenX, screenY) = screenCoordinates
 
-                // Check if object moved significantly
-                val lastPos = lastScreenPositions[obj.name]
-                if (lastPos != null) {
-                    val deltaX = screenX - lastPos.first
-                    val deltaY = screenY - lastPos.second
-
-                    if (DEBUG_MODE && (abs(deltaX) > 2 || abs(deltaY) > 2)) {
-                        Timber.d("${obj.name} moved by $deltaX, $deltaY pixels")
-                    }
-                }
-
                 // Store current position
                 lastScreenPositions[obj.name] = Pair(screenX, screenY)
                 visibleObjects.add(obj.name)
@@ -216,11 +178,11 @@ class SkyOverlayView @JvmOverloads constructor(
                         paint
                     )
 
-                    // Determine text size based on object importance
+                    // Determine text size based on object importance - also 3x larger
                     textPaint.textSize = when (obj.name) {
-                        "Sun", "Moon" -> 36f
-                        "Jupiter", "Saturn" -> 30f
-                        else -> 28f
+                        "Sun", "Moon" -> 48f
+                        "Jupiter", "Saturn" -> 42f
+                        else -> 36f
                     }
 
                     // Draw the object name
@@ -243,79 +205,27 @@ class SkyOverlayView @JvmOverloads constructor(
                 lastScreenPositions.remove(name)
             }
         }
-
-        // Always draw debug info
-        drawDebugInfo(canvas, "Objects visible: ${visibleObjects.size}/${celestialObjects.size}")
     }
 
-    private fun drawDebugGrid(canvas: Canvas) {
-        // Draw a reference grid
-        val gridPaint = Paint().apply {
-            color = Color.argb(50, 255, 255, 255)
-            strokeWidth = 1f
+    /**
+     * Captures the current view as a bitmap image
+     * @return The captured bitmap or null if it couldn't be captured
+     */
+    fun captureView(): Bitmap? {
+        if (width <= 0 || height <= 0) {
+            return null
         }
 
-        // Vertical lines
-        for (x in 0..10) {
-            val xPos = viewWidth * x / 10f
-            canvas.drawLine(xPos, 0f, xPos, viewHeight.toFloat(), gridPaint)
-        }
+        // Create a bitmap with the view's dimensions
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
 
-        // Horizontal lines
-        for (y in 0..10) {
-            val yPos = viewHeight * y / 10f
-            canvas.drawLine(0f, yPos, viewWidth.toFloat(), yPos, gridPaint)
-        }
+        // Create a canvas with the bitmap
+        val canvas = Canvas(bitmap)
 
-        // Draw center crosshair
-        val crosshairPaint = Paint().apply {
-            color = Color.YELLOW
-            strokeWidth = 2f
-        }
+        // Draw the view into the canvas
+        draw(canvas)
 
-        canvas.drawLine((viewWidth/2 - 20).toFloat(), (viewHeight/2).toFloat(),
-            (viewWidth/2 + 20).toFloat(), (viewHeight/2).toFloat(), crosshairPaint)
-        canvas.drawLine((viewWidth/2).toFloat(), (viewHeight/2 - 20).toFloat(),
-            (viewWidth/2).toFloat(), (viewHeight/2 + 20).toFloat(), crosshairPaint)
-    }
-
-    private fun drawDebugInfo(canvas: Canvas, statusMessage: String) {
-        if (!DEBUG_MODE) return
-
-        val orientation = currentOrientation
-        val lookVec = deviceLookVector
-
-        val lines = mutableListOf(
-            "FPS: $fps"
-        )
-
-        if (statusMessage.isNotEmpty()) {
-            lines.add(statusMessage)
-        }
-
-        if (orientation != null) {
-            lines.add("Az: ${orientation.azimuth.toInt()}° Pitch: ${orientation.pitch.toInt()}° " +
-                    "Roll: ${orientation.roll.toInt()}°")
-        }
-
-        if (lookVec != null) {
-            lines.add("Look: (${String.format("%.2f", lookVec.x)}, " +
-                    "${String.format("%.2f", lookVec.y)}, " +
-                    "${String.format("%.2f", lookVec.z)})")
-        }
-
-        // Draw a semi-transparent background for better readability
-        val bgPaint = Paint().apply {
-            color = Color.argb(150, 0, 0, 0)
-            style = Paint.Style.FILL
-        }
-
-        canvas.drawRect(10f, 10f, 600f, 40f + lines.size * 30f, bgPaint)
-
-        // Draw debug text
-        for ((i, line) in lines.withIndex()) {
-            canvas.drawText(line, 20f, 40f + i * 30f, debugPaint)
-        }
+        return bitmap
     }
 
     override fun onDetachedFromWindow() {
