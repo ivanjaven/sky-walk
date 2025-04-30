@@ -73,15 +73,20 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
     // For scheduled updates of celestial positions
     private val scheduler: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
 
+    // Current date/time for calculations
+    private var currentDate = Date()
+    private val updateTimeFrequencyMs = 1000L // Update time every second for accurate positions
+
     init {
         // Initialize all celestial objects
         initializeCelestialObjects()
         registerSensors()
 
-        // Schedule regular updates of celestial positions
+        // Schedule regular updates of celestial positions and time
         scheduler.scheduleAtFixedRate({
+            currentDate = Date() // Update current time
             updateCelestialPositions()
-        }, 5, 30, TimeUnit.SECONDS)
+        }, 0, updateTimeFrequencyMs, TimeUnit.MILLISECONDS)
     }
 
     private fun initializeCelestialObjects() {
@@ -145,20 +150,34 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun updateCelestialPositions() {
-        val currentTime = Date()
-
         try {
             // Get current celestial objects
             val currentObjects = _celestialObjects.value ?: return
+
+            // Get local sidereal time for calculations
+            val lst = AstronomyUtils.calculateSiderealTime(currentDate, longitude.toFloat())
+            Timber.d("Local sidereal time: $lst degrees")
 
             // Create updated list with new positions
             val updatedObjects = currentObjects.map { obj ->
                 // Calculate the new position for this object
                 val skyCoordinate = when (obj.name) {
-                    "Sun" -> AstronomyUtils.calculateSunPosition(currentTime, latitude.toFloat(), longitude.toFloat())
-                    "Moon" -> AstronomyUtils.calculateMoonPosition(currentTime, latitude.toFloat(), longitude.toFloat())
-                    "Mercury", "Venus", "Mars", "Jupiter", "Saturn" ->
-                        AstronomyUtils.calculatePlanetPosition(currentTime, latitude.toFloat(), longitude.toFloat(), obj.name)
+                    "Sun" -> AstronomyUtils.calculateSunPosition(
+                        currentDate,
+                        latitude.toFloat(),
+                        longitude.toFloat()
+                    )
+                    "Moon" -> AstronomyUtils.calculateMoonPosition(
+                        currentDate,
+                        latitude.toFloat(),
+                        longitude.toFloat()
+                    )
+                    "Mercury", "Venus", "Mars", "Jupiter", "Saturn" -> AstronomyUtils.calculatePlanetPosition(
+                        currentDate,
+                        latitude.toFloat(),
+                        longitude.toFloat(),
+                        obj.name
+                    )
                     else -> obj.skyCoordinate // Keep the current position for unknown objects
                 }
 
@@ -168,8 +187,8 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
 
             // Log the positions for debugging
             updatedObjects.forEach { obj ->
-                Timber.d("Updated ${obj.name} position: RA=${obj.skyCoordinate.rightAscension}, " +
-                        "Dec=${obj.skyCoordinate.declination}")
+                Timber.d("Updated ${obj.name} position: Azimuth=${obj.skyCoordinate.rightAscension}, " +
+                        "Altitude=${obj.skyCoordinate.declination}")
             }
 
             // Post the updated list
@@ -274,19 +293,19 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
         // This ensures consistency between orientation angles and vectors
         // Following Stardroid's approach for correct vector calculation
 
-        // Look vector (negative of 3rd column of matrix)
+        // Look vector (negative of 3rd column of matrix) - points where the phone is pointing
         val lookVector = Vector3(
             x = -filteredMatrix[2],
             y = -filteredMatrix[5],
             z = -filteredMatrix[8]
-        )
+        ).normalize()
 
-        // Up vector (2nd column) - this matches Stardroid's approach
+        // Up vector (2nd column) - points to the top of the phone screen
         val upVector = Vector3(
             x = filteredMatrix[1],
             y = filteredMatrix[4],
             z = filteredMatrix[7]
-        )
+        ).normalize()
 
         _deviceOrientationVector.postValue(lookVector)
         _deviceUpVector.postValue(upVector)
@@ -383,5 +402,12 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
         // Update the celestial positions with the new location
         updateCelestialPositions()
         Timber.d("Location set to lat=$latitude, long=$longitude")
+    }
+
+    fun simulateTime(simulatedDate: Date) {
+        // Allow setting a specific time for testing or demonstration
+        this.currentDate = simulatedDate
+        updateCelestialPositions()
+        Timber.d("Time simulation set to: ${simulatedDate}")
     }
 }
