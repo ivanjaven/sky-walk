@@ -1,23 +1,19 @@
 package com.example.skywalk.features.ar.presentation.components
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.Typeface
+import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
 import androidx.lifecycle.findViewTreeLifecycleOwner
 import com.example.skywalk.features.ar.domain.models.CelestialObject
 import com.example.skywalk.features.ar.domain.models.DeviceOrientation
 import com.example.skywalk.features.ar.domain.models.SkyCoordinate
+import com.example.skywalk.features.ar.domain.models.Star
 import com.example.skywalk.features.ar.domain.models.Vector3
 import com.example.skywalk.features.ar.presentation.viewmodel.AstronomyViewModel
 import com.example.skywalk.features.ar.utils.AstronomyUtils
 import timber.log.Timber
+import java.util.Date
 import kotlin.math.min
 
 class SkyOverlayView @JvmOverloads constructor(
@@ -26,7 +22,7 @@ class SkyOverlayView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    // Paint objects for drawing
+    // Paint objects
     private val paint = Paint().apply {
         isAntiAlias = true
     }
@@ -48,6 +44,12 @@ class SkyOverlayView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER
     }
 
+    private val starPaint = Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.FILL
+        color = Color.WHITE
+    }
+
     private val compassPaint = Paint().apply {
         isAntiAlias = true
         textSize = 32f
@@ -62,7 +64,7 @@ class SkyOverlayView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         strokeWidth = 2f
         color = Color.argb(100, 255, 255, 255)
-        pathEffect = android.graphics.DashPathEffect(floatArrayOf(10f, 10f), 0f)
+        pathEffect = DashPathEffect(floatArrayOf(10f, 10f), 0f)
     }
 
     // State tracking
@@ -70,21 +72,26 @@ class SkyOverlayView @JvmOverloads constructor(
     private var deviceLookVector: Vector3? = null
     private var deviceUpVector: Vector3? = null
     private var celestialObjects: List<CelestialObject> = emptyList()
+    private var stars: List<Star> = emptyList()
     private val objectBitmaps = mutableMapOf<Int, Bitmap>()
     private var viewModel: AstronomyViewModel? = null
     private var viewWidth = 0
     private var viewHeight = 0
 
-    // Track last screen positions of objects for smoother transitions
+    // Tracking screen positions
     private val lastScreenPositions = mutableMapOf<String, Pair<Float, Float>>()
 
-    // Compass directions for horizon line
-    private val compassDirections = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+    // Star rendering options
+    private val SHOW_STAR_NAMES = true
+    private val MAX_LABELED_STARS = 20
 
-    // Debug mode flag
+    // Debug and UI options
     private val SHOW_COMPASS = true
     private val SHOW_ALTITUDE_GUIDES = true
     private val SHOW_OBJECT_INFO = true
+
+    // Compass directions
+    private val compassDirections = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 
     fun initialize(viewModel: AstronomyViewModel) {
         this.viewModel = viewModel
@@ -110,6 +117,11 @@ class SkyOverlayView @JvmOverloads constructor(
                 prepareObjectBitmaps(objects)
                 invalidate()
             }
+
+            viewModel.stars.observe(lifecycleOwner) { newStars ->
+                stars = newStars
+                invalidate()
+            }
         }
     }
 
@@ -119,10 +131,8 @@ class SkyOverlayView @JvmOverloads constructor(
         objects.forEach { obj ->
             if (!objectBitmaps.containsKey(obj.imageResourceId)) {
                 try {
-                    // Load the bitmap
                     val originalBitmap = BitmapFactory.decodeResource(resources, obj.imageResourceId)
 
-                    // Scale the image based on object type and magnitude
                     val scaleFactor = when (obj.name) {
                         "Sun" -> 0.45f
                         "Moon" -> 0.36f
@@ -145,7 +155,6 @@ class SkyOverlayView @JvmOverloads constructor(
                     objectBitmaps[obj.imageResourceId] = scaledBitmap
                     originalBitmap.recycle()
 
-                    Timber.d("Created bitmap for ${obj.name} with size $size")
                 } catch (e: Exception) {
                     Timber.e(e, "Error loading bitmap for ${obj.name}")
                 }
@@ -190,11 +199,19 @@ class SkyOverlayView @JvmOverloads constructor(
             drawCompassDirections(canvas, lookVector, upVector, fieldOfView)
         }
 
+        // Calculate local sidereal time
+        val currentDate = viewModel?.getCurrentDate() ?: Date()
+        val latitude = viewModel?.getLatitude() ?: 0f
+        val longitude = viewModel?.getLongitude() ?: 0f
+        val lst = AstronomyUtils.calculateSiderealTime(currentDate, longitude)
+
+        // Draw stars
+        drawStars(canvas, lookVector, upVector, fieldOfView, lst, latitude)
+
         // Clear objects not visible in this frame
         val visibleObjects = mutableSetOf<String>()
 
         // Sort objects by declination so that objects higher in the sky are drawn on top
-        // For horizontal coordinates: declination = altitude, rightAscension = azimuth
         val sortedObjects = celestialObjects.sortedBy { it.skyCoordinate.declination }
 
         // Draw all celestial objects
@@ -271,6 +288,89 @@ class SkyOverlayView @JvmOverloads constructor(
 
         // Draw current azimuth (compass direction)
         drawAzimuthIndicator(canvas, orientation.azimuth)
+    }
+
+    /**
+     * Draw stars on the canvas
+     */
+    private fun drawStars(
+        canvas: Canvas,
+        lookVector: Vector3,
+        upVector: Vector3,
+        fieldOfView: Float,
+        localSiderealTime: Float,
+        latitude: Float
+    ) {
+        if (stars.isEmpty()) return
+
+        // Track which stars we've labeled (to avoid crowding)
+        val labeledStars = mutableListOf<Star>()
+
+        // Process stars
+        for (star in stars) {
+            // Convert from equatorial (RA/Dec) to horizontal coordinates (Az/Alt)
+            val horizontalCoord = AstronomyUtils.equatorialToHorizontal(
+                star.skyCoordinate.rightAscension,
+                star.skyCoordinate.declination,
+                latitude,
+                localSiderealTime
+            )
+
+            // Skip stars below horizon (negative altitude)
+            if (horizontalCoord.declination < 0) continue
+
+            // Calculate screen position
+            val screenCoord = AstronomyUtils.celestialToScreenCoordinates(
+                horizontalCoord,
+                lookVector,
+                upVector,
+                fieldOfView,
+                viewWidth,
+                viewHeight
+            ) ?: continue
+
+            // Draw the star
+            val (screenX, screenY) = screenCoord
+
+            // Set star color based on B-V index
+            starPaint.color = star.getStarColor()
+
+            // Determine size based on magnitude
+            val starSize = when {
+                star.magnitude < 0 -> 8f
+                star.magnitude < 1 -> 6f
+                star.magnitude < 2 -> 5f
+                star.magnitude < 3 -> 4f
+                star.magnitude < 4 -> 3f
+                else -> 2f
+            }
+
+            // Draw star as circle
+            canvas.drawCircle(screenX, screenY, starSize, starPaint)
+
+            // Add "glow" effect for brightest stars
+            if (star.magnitude < 2.0f) {
+                starPaint.alpha = 100  // Semi-transparent
+                canvas.drawCircle(screenX, screenY, starSize * 1.8f, starPaint)
+                starPaint.alpha = 255  // Reset alpha
+            }
+
+            // Label only the brightest stars and limit number to avoid cluttering
+            if (SHOW_STAR_NAMES && star.magnitude < 2.0f && labeledStars.size < MAX_LABELED_STARS) {
+                // Only label if there's a name
+                val name = star.getDisplayName()
+                if (name.isNotEmpty()) {
+                    textPaint.textSize = 24f
+                    canvas.drawText(
+                        name,
+                        screenX,
+                        screenY + starSize + 15f,
+                        textPaint
+                    )
+                    labeledStars.add(star)
+                }
+            }
+        }
     }
 
     private fun drawAltitudeGuides(canvas: Canvas, lookVector: Vector3, upVector: Vector3, fieldOfView: Float) {

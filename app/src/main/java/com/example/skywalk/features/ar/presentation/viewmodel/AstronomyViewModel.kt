@@ -11,12 +11,17 @@ import android.view.WindowManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.viewModelScope
 import com.example.skywalk.R
+import com.example.skywalk.features.ar.data.StarRepository
 import com.example.skywalk.features.ar.domain.models.CelestialObject
 import com.example.skywalk.features.ar.domain.models.DeviceOrientation
 import com.example.skywalk.features.ar.domain.models.SkyCoordinate
+import com.example.skywalk.features.ar.domain.models.Star
 import com.example.skywalk.features.ar.domain.models.Vector3
 import com.example.skywalk.features.ar.utils.AstronomyUtils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.Calendar
 import java.util.Date
@@ -30,12 +35,15 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
     private val sensorManager = application.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val windowManager = application.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-    // Sensors - prioritize rotation vector for best accuracy
+    // Repositories
+    private val starRepository = StarRepository(application)
+
+    // Sensors
     private val rotationVectorSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
     private val accelerometerSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val magnetometerSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
 
-    // LiveData objects observed by the UI
+    // LiveData objects
     private val _deviceOrientation = MutableLiveData<DeviceOrientation>()
     val deviceOrientation: LiveData<DeviceOrientation> = _deviceOrientation
 
@@ -48,45 +56,60 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
     private val _celestialObjects = MutableLiveData<List<CelestialObject>>()
     val celestialObjects: LiveData<List<CelestialObject>> = _celestialObjects
 
+    private val _stars = MutableLiveData<List<Star>>()
+    val stars: LiveData<List<Star>> = _stars
+
     // Sensor data arrays
     private val rotationMatrix = FloatArray(9)
     private val rotationMatrixAdjusted = FloatArray(9)
     private val orientationAngles = FloatArray(3)
     private val accelerometerReading = FloatArray(3)
     private val magnetometerReading = FloatArray(3)
-
-    // Rotation vector (quaternion) for more stable orientation
     private val rotationVector = FloatArray(4) { if (it == 3) 1f else 0f }
 
-    // Following Stardroid's approach with complementary filtering
-    private val LOW_PASS_ALPHA = 0.1f      // For very smooth movement (closer to 0 = more smoothing)
+    // Filtering for smooth movement
+    private val LOW_PASS_ALPHA = 0.1f
     private val filteredMatrix = FloatArray(9)
-    private val prevFilteredMatrix = FloatArray(9) { if (it % 4 == 0) 1f else 0f } // Initialize as identity matrix
+    private val prevFilteredMatrix = FloatArray(9) { if (it % 4 == 0) 1f else 0f }
 
-    // Field of view (in radians)
+    // Field of view and zoom
     private var fieldOfViewRadians = (60f * PI.toFloat() / 180f)
+    private var currentZoom = 1.0f
 
-    // User location - needed for accurate celestial position calculations
+    // User location
     private var latitude = 34.0522  // Default: Los Angeles
     private var longitude = -118.2437
 
-    // For scheduled updates of celestial positions
+    // Scheduling and time
     private val scheduler: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
-
-    // Current date/time for calculations
     private var currentDate = Date()
-    private val updateTimeFrequencyMs = 1000L // Update time every second for accurate positions
+    private val updateTimeFrequencyMs = 1000L
 
     init {
+        // Load stars in background
+        viewModelScope.launch(Dispatchers.IO) {
+            loadStars()
+        }
+
         // Initialize all celestial objects
         initializeCelestialObjects()
         registerSensors()
 
-        // Schedule regular updates of celestial positions and time
+        // Schedule regular updates
         scheduler.scheduleAtFixedRate({
             currentDate = Date() // Update current time
             updateCelestialPositions()
         }, 0, updateTimeFrequencyMs, TimeUnit.MILLISECONDS)
+    }
+
+    private fun loadStars() {
+        try {
+            val stars = starRepository.getStarsForZoomLevel(currentZoom)
+            _stars.postValue(stars)
+            Timber.d("Loaded ${stars.size} stars for zoom level $currentZoom")
+        } catch (e: Exception) {
+            Timber.e(e, "Error loading stars: ${e.message}")
+        }
     }
 
     private fun initializeCelestialObjects() {
@@ -144,23 +167,18 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
         )
 
         _celestialObjects.postValue(objects)
-
-        // Update positions immediately
         updateCelestialPositions()
     }
 
     private fun updateCelestialPositions() {
         try {
-            // Get current celestial objects
             val currentObjects = _celestialObjects.value ?: return
 
-            // Get local sidereal time for calculations
+            // Calculate local sidereal time
             val lst = AstronomyUtils.calculateSiderealTime(currentDate, longitude.toFloat())
-            Timber.d("Local sidereal time: $lst degrees")
 
-            // Create updated list with new positions
+            // Update positions for planets and sun/moon
             val updatedObjects = currentObjects.map { obj ->
-                // Calculate the new position for this object
                 val skyCoordinate = when (obj.name) {
                     "Sun" -> AstronomyUtils.calculateSunPosition(
                         currentDate,
@@ -178,29 +196,44 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
                         longitude.toFloat(),
                         obj.name
                     )
-                    else -> obj.skyCoordinate // Keep the current position for unknown objects
+                    else -> obj.skyCoordinate
                 }
 
-                // Create a copy of the object with the updated position
                 obj.copy(skyCoordinate = skyCoordinate)
             }
 
-            // Log the positions for debugging
-            updatedObjects.forEach { obj ->
-                Timber.d("Updated ${obj.name} position: Azimuth=${obj.skyCoordinate.rightAscension}, " +
-                        "Altitude=${obj.skyCoordinate.declination}")
-            }
-
-            // Post the updated list
             _celestialObjects.postValue(updatedObjects)
+
+            // Also update star positions to horizontal coordinates
+            updateStarPositions(lst)
 
         } catch (e: Exception) {
             Timber.e(e, "Error updating celestial positions")
         }
     }
 
+    // Update star positions to current horizontal coordinates
+    private fun updateStarPositions(lst: Float) {
+        viewModelScope.launch(Dispatchers.Default) {
+            val currentStars = _stars.value ?: return@launch
+
+            // No need to recalculate all stars if we have too many
+            // Just process the visible ones that are likely to be on screen
+            val maxStarsToProcess = 2000
+            val starsToProcess = if (currentStars.size > maxStarsToProcess) {
+                currentStars.subList(0, maxStarsToProcess)
+            } else {
+                currentStars
+            }
+
+            // We don't need to update the actual star objects since RA/Dec doesn't change
+            // The conversion to horizontal coordinates happens in the drawing phase
+            // This is just a notification that time has changed and stars need redrawing
+            _stars.postValue(starsToProcess)
+        }
+    }
+
     private fun registerSensors() {
-        // Try to use the rotation vector sensor first (best accuracy)
         if (rotationVectorSensor != null) {
             sensorManager.registerListener(
                 this,
@@ -209,7 +242,6 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
             )
             Timber.d("Using rotation vector sensor")
         } else {
-            // Fall back to accelerometer and magnetometer
             sensorManager.registerListener(
                 this,
                 accelerometerSensor,
@@ -227,11 +259,8 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {
             Sensor.TYPE_ROTATION_VECTOR -> {
-                // Copy the rotation vector
                 System.arraycopy(event.values, 0, rotationVector, 0,
                     minOf(event.values.size, rotationVector.size))
-
-                // Get rotation matrix from rotation vector
                 SensorManager.getRotationMatrixFromVector(rotationMatrix, rotationVector)
                 processRotationMatrix()
             }
@@ -249,9 +278,7 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun updateOrientationFromAccelMag() {
-        // Only process if we have readings from both sensors
         if (accelerometerReading.isNotEmpty() && magnetometerReading.isNotEmpty()) {
-            // Get rotation matrix from accelerometer and magnetometer
             val success = SensorManager.getRotationMatrix(
                 rotationMatrix,
                 null,
@@ -266,41 +293,34 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun processRotationMatrix() {
-        // Adjust coordinate system for screen rotation
+        // Adjust for screen rotation
         adjustForScreenRotation()
 
-        // Apply complementary filtering to the rotation matrix
-        // This provides much smoother motion than filtering angles
+        // Apply complementary filtering
         applyMatrixFilter()
 
-        // Get orientation angles from the filtered rotation matrix
+        // Get orientation angles
         SensorManager.getOrientation(filteredMatrix, orientationAngles)
 
-        // Update device orientation in degrees for UI display
         val azimuth = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
         val pitch = Math.toDegrees(orientationAngles[1].toDouble()).toFloat()
         val roll = Math.toDegrees(orientationAngles[2].toDouble()).toFloat()
 
         _deviceOrientation.postValue(
             DeviceOrientation(
-                azimuth = (azimuth + 360) % 360,  // Normalize to 0-360
+                azimuth = (azimuth + 360) % 360,
                 pitch = pitch,
                 roll = roll
             )
         )
 
-        // Extract look and up vectors directly from filtered rotation matrix
-        // This ensures consistency between orientation angles and vectors
-        // Following Stardroid's approach for correct vector calculation
-
-        // Look vector (negative of 3rd column of matrix) - points where the phone is pointing
+        // Extract look and up vectors
         val lookVector = Vector3(
             x = -filteredMatrix[2],
             y = -filteredMatrix[5],
             z = -filteredMatrix[8]
         ).normalize()
 
-        // Up vector (2nd column) - points to the top of the phone screen
         val upVector = Vector3(
             x = filteredMatrix[1],
             y = filteredMatrix[4],
@@ -315,14 +335,10 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun applyMatrixFilter() {
-        // Apply complementary filter to the rotation matrix elements
-        // This provides better stability than filtering angles
         for (i in 0 until 9) {
             filteredMatrix[i] = LOW_PASS_ALPHA * rotationMatrixAdjusted[i] +
                     (1 - LOW_PASS_ALPHA) * prevFilteredMatrix[i]
         }
-
-        // Ensure the matrix remains orthogonal (proper rotation matrix)
         orthonormalizeMatrix(filteredMatrix)
     }
 
@@ -349,7 +365,6 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun adjustForScreenRotation() {
-        // Adjust coordinate system for screen rotation
         val rotation = windowManager.defaultDisplay.rotation
 
         when (rotation) {
@@ -377,12 +392,11 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // Not needed for this implementation
+        // Not needed
     }
 
     override fun onCleared() {
         super.onCleared()
-        // Clean up
         sensorManager.unregisterListener(this)
         scheduler.shutdown()
     }
@@ -395,19 +409,26 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
         fieldOfViewRadians = (degrees * PI.toFloat() / 180f)
     }
 
+    fun setZoom(zoom: Float) {
+        currentZoom = zoom
+
+        // Reload stars with appropriate filtering
+        viewModelScope.launch(Dispatchers.IO) {
+            val stars = starRepository.getStarsForZoomLevel(zoom)
+            _stars.postValue(stars)
+        }
+    }
+
     fun setLocation(latitude: Double, longitude: Double) {
         this.latitude = latitude
         this.longitude = longitude
-
-        // Update the celestial positions with the new location
         updateCelestialPositions()
         Timber.d("Location set to lat=$latitude, long=$longitude")
     }
 
-    fun simulateTime(simulatedDate: Date) {
-        // Allow setting a specific time for testing or demonstration
-        this.currentDate = simulatedDate
-        updateCelestialPositions()
-        Timber.d("Time simulation set to: ${simulatedDate}")
-    }
+    fun getCurrentDate(): Date = currentDate
+
+    fun getLatitude(): Float = latitude.toFloat()
+
+    fun getLongitude(): Float = longitude.toFloat()
 }

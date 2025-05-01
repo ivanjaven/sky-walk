@@ -262,6 +262,9 @@ class ARActivity : ComponentActivity() {
         val newFov = baseFov / currentZoom
 
         astronomyViewModel.setFieldOfView(newFov)
+
+        // Also update the zoom factor for star filtering
+        astronomyViewModel.setZoom(currentZoom)
     }
 
     private fun toggleSystemUi() {

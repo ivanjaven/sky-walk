@@ -1,10 +1,10 @@
 package com.example.skywalk.features.ar.utils
 
+import android.icu.util.Calendar
 import com.example.skywalk.features.ar.domain.models.SkyCoordinate
 import com.example.skywalk.features.ar.domain.models.Vector3
 import timber.log.Timber
 import java.util.Date
-import java.util.Calendar
 import kotlin.math.*
 
 object AstronomyUtils {
@@ -25,6 +25,59 @@ object AstronomyUtils {
             y = sin(raRad) * cos(decRad),
             z = sin(decRad)
         ).normalize()
+    }
+
+    // Calculate Julian Day - crucial for accurate astronomical calculations
+    fun julianDay(date: Date): Double {
+        val cal = java.util.Calendar.getInstance()
+        cal.time = date
+
+        val year = cal[java.util.Calendar.YEAR]
+        val month = cal[java.util.Calendar.MONTH] + 1
+        val day = cal[java.util.Calendar.DAY_OF_MONTH]
+        val hour = cal[java.util.Calendar.HOUR_OF_DAY]
+        val minute = cal[java.util.Calendar.MINUTE]
+        val second = cal[java.util.Calendar.SECOND]
+
+        val hourDecimal = hour + minute / 60.0 + second / 3600.0
+
+        // Julian date calculation using Astronomical Almanac formula
+        var jd = 367 * year -
+                floor(7 * (year + floor((month + 9) / 12.0)) / 4.0).toInt() +
+                floor(275 * month / 9.0).toInt() +
+                day + 1721013.5
+
+        // Add time of day
+        jd += hourDecimal / 24.0
+
+        return jd
+    }
+
+    // Calculate time in Julian centuries since J2000
+    fun julianCenturies(date: Date): Double {
+        val jd = julianDay(date)
+        return (jd - 2451545.0) / 36525.0
+    }
+
+    // Calculate local mean sidereal time in degrees
+    fun calculateSiderealTime(date: Date, longitude: Float): Float {
+        val jd = julianDay(date)
+        val t = (jd - 2451545.0) / 36525.0  // Julian centuries since J2000.0
+
+        // Greenwich mean sidereal time in degrees
+        var gmst = 280.46061837 +
+                360.98564736629 * (jd - 2451545.0) +
+                0.000387933 * t * t -
+                t * t * t / 38710000.0
+
+        // Normalize to [0, 360)
+        gmst = (gmst % 360.0 + 360.0) % 360.0
+
+        // Local mean sidereal time
+        var lmst = (gmst + longitude)
+        lmst = (lmst % 360.0 + 360.0) % 360.0
+
+        return lmst.toFloat()
     }
 
     // Convert Azimuth and Altitude to RA and Dec
@@ -52,14 +105,14 @@ object AstronomyUtils {
         return SkyCoordinate(ra, dec)
     }
 
-    // Convert RA and Dec to Azimuth and Altitude
+    // Convert RA and Dec to Azimuth and Altitude - CRITICAL for accurate positioning
     fun equatorialToHorizontal(ra: Float, dec: Float, latitude: Float, localSiderealTime: Float): SkyCoordinate {
         val raRad = ra * DEGREES_TO_RADIANS
         val decRad = dec * DEGREES_TO_RADIANS
         val latRad = latitude * DEGREES_TO_RADIANS
         val lstRad = localSiderealTime * DEGREES_TO_RADIANS
 
-        // Calculate hour angle
+        // Calculate hour angle (difference between LST and RA)
         val hourAngleRad = lstRad - raRad
 
         // Calculate altitude
@@ -81,7 +134,7 @@ object AstronomyUtils {
         return SkyCoordinate(azimuth, altitude)
     }
 
-    // This is the key function for accurate panning
+    // This projection function is crucial for placing objects correctly on screen
     fun celestialToScreenCoordinates(
         skyCoordinate: SkyCoordinate,
         deviceLookVector: Vector3,
@@ -91,9 +144,9 @@ object AstronomyUtils {
         screenHeight: Int
     ): Pair<Float, Float>? {
         // Convert sky coordinate to a unit vector
-        val objectVector = raDecToVector(
-            skyCoordinate.rightAscension,
-            skyCoordinate.declination
+        val objectVector = Vector3.fromSpherical(
+            skyCoordinate.rightAscension * DEGREES_TO_RADIANS,
+            skyCoordinate.declination * DEGREES_TO_RADIANS
         )
 
         // We need the right vector to complete the device's coordinate system
@@ -129,60 +182,7 @@ object AstronomyUtils {
         return null
     }
 
-    // Calculate Julian Day - more accurate formula from Stardroid
-    fun julianDay(date: Date): Double {
-        val cal = Calendar.getInstance()
-        cal.time = date
-
-        val year = cal[Calendar.YEAR]
-        val month = cal[Calendar.MONTH] + 1
-        val day = cal[Calendar.DAY_OF_MONTH]
-        val hour = cal[Calendar.HOUR_OF_DAY]
-        val minute = cal[Calendar.MINUTE]
-        val second = cal[Calendar.SECOND]
-
-        val hourDecimal = hour + minute / 60.0 + second / 3600.0
-
-        // Julian date calculation using the formula from the Astronomical Almanac
-        var jd = 367 * year -
-                floor(7 * (year + floor((month + 9) / 12.0)) / 4.0).toInt() +
-                floor(275 * month / 9.0).toInt() +
-                day + 1721013.5
-
-        // Add time of day
-        jd += hourDecimal / 24.0
-
-        return jd
-    }
-
-    // Calculate time in Julian centuries since J2000
-    fun julianCenturies(date: Date): Double {
-        val jd = julianDay(date)
-        return (jd - 2451545.0) / 36525.0
-    }
-
-    // Calculate local mean sidereal time in degrees
-    fun calculateSiderealTime(date: Date, longitude: Float): Float {
-        val jd = julianDay(date)
-        val t = (jd - 2451545.0) / 36525.0  // Julian centuries since J2000.0
-
-        // Greenwich mean sidereal time at 0h UT
-        var gmst = 280.46061837 +
-                360.98564736629 * (jd - 2451545.0) +
-                0.000387933 * t * t -
-                t * t * t / 38710000.0
-
-        // Normalize to [0, 360)
-        gmst = (gmst % 360.0 + 360.0) % 360.0
-
-        // Local mean sidereal time
-        var lmst = (gmst + longitude)
-        lmst = (lmst % 360.0 + 360.0) % 360.0
-
-        return lmst.toFloat()
-    }
-
-    // Calculate the Sun's position using a more accurate algorithm from Stardroid
+    // Calculate the Sun's position using a more accurate algorithm
     fun calculateSunPosition(date: Date, latitude: Float, longitude: Float): SkyCoordinate {
         val t = julianCenturies(date)
 
@@ -219,34 +219,33 @@ object AstronomyUtils {
         return equatorialToHorizontal(ra.toFloat(), dec.toFloat(), latitude, lst)
     }
 
-    // Calculate the Moon's position using a more accurate algorithm
+    // Calculate the Moon's position - this is the most complex calculation
     fun calculateMoonPosition(date: Date, latitude: Float, longitude: Float): SkyCoordinate {
         val T = julianCenturies(date)
 
-        // Lunar mean longitude
+        // Mean longitude of the Moon (degrees)
         val L = (218.3164477 + 481267.88123421 * T - 0.0015786 * T * T) % 360.0
-        val L_rad = L * Math.PI / 180.0
 
-        // Lunar mean elongation
+        // Moon's mean elongation (degrees)
         val D = (297.8501921 + 445267.1114034 * T - 0.0018819 * T * T) % 360.0
-        val D_rad = D * Math.PI / 180.0
+        val D_rad = D * PI / 180.0
 
-        // Sun's mean anomaly
+        // Sun's mean anomaly (degrees)
         val M = (357.5291092 + 35999.0502909 * T - 0.0001536 * T * T) % 360.0
-        val M_rad = M * Math.PI / 180.0
+        val M_rad = M * PI / 180.0
 
-        // Moon's mean anomaly
+        // Moon's mean anomaly (degrees)
         val M_moon = (134.9633964 + 477198.8675055 * T + 0.0087414 * T * T) % 360.0
-        val M_moon_rad = M_moon * Math.PI / 180.0
+        val M_moon_rad = M_moon * PI / 180.0
 
-        // Moon's argument of latitude
+        // Moon's argument of latitude (degrees)
         val F = (93.2720950 + 483202.0175233 * T - 0.0036539 * T * T) % 360.0
-        val F_rad = F * Math.PI / 180.0
+        val F_rad = F * PI / 180.0
 
-        // Correction for the eccentricity of Earth's orbit
+        // Eccentricity correction term
         val E = 1.0 - 0.002516 * T - 0.0000074 * T * T
 
-        // Lunar longitude perturbations (simplified)
+        // Periodic terms for the Moon's longitude (simplified)
         val longitude_perturbation =
             6.288774 * sin(M_moon_rad) +
                     1.274027 * sin(2 * D_rad - M_moon_rad) +
@@ -254,7 +253,7 @@ object AstronomyUtils {
                     0.213618 * sin(2 * M_moon_rad) -
                     0.185116 * E * sin(M_rad)
 
-        // Lunar latitude perturbations (simplified)
+        // Periodic terms for the Moon's latitude
         val latitude_perturbation =
             5.128122 * sin(F_rad) +
                     0.280602 * sin(M_moon_rad + F_rad) +
@@ -264,48 +263,50 @@ object AstronomyUtils {
         val longitude_corrected = (L + longitude_perturbation) % 360.0
         val latitude_corrected = latitude_perturbation
 
-        // Convert to RA and Dec
-        val longitude_rad = longitude_corrected * Math.PI / 180.0
-        val latitude_rad = latitude_corrected * Math.PI / 180.0
+        // Convert to equatorial coordinates
+        val longitude_rad = longitude_corrected * PI / 180.0
+        val latitude_rad = latitude_corrected * PI / 180.0
 
         val x = cos(longitude_rad) * cos(latitude_rad)
         val y = sin(longitude_rad) * cos(latitude_rad)
         val z = sin(latitude_rad)
 
-        // Account for ecliptic-to-equatorial coordinate transformation
+        // Apply ecliptic-to-equatorial transformation
         val xEq = x
         val yEq = y * cos(OBLIQUITY) - z * sin(OBLIQUITY)
         val zEq = y * sin(OBLIQUITY) + z * cos(OBLIQUITY)
 
-        // Convert to RA and Dec
-        var ra = atan2(yEq, xEq) * 180.0 / Math.PI
+        // Calculate RA and Dec
+        var ra = atan2(yEq, xEq) * 180.0 / PI
         if (ra < 0) ra += 360.0
-        val dec = asin(zEq) * 180.0 / Math.PI
+        val dec = asin(zEq) * 180.0 / PI
 
         // Get local sidereal time
         val lst = calculateSiderealTime(date, longitude)
 
-        // Convert to horizontal coordinates
+        // Convert to horizontal coordinates (azimuth and altitude)
         return equatorialToHorizontal(ra.toFloat(), dec.toFloat(), latitude, lst)
     }
 
-    // Calculate Planet positions using simplified orbital elements
+    // Calculate planet positions
     fun calculatePlanetPosition(date: Date, latitude: Float, longitude: Float, planetName: String): SkyCoordinate {
-        // Get orbital elements based on planet name
-        val orbitalElements = getPlanetOrbitalElements(date, planetName)
-        if (orbitalElements == null) {
-            // If we don't have elements, return a dummy position (will be improved in future version)
-            return dummyPlanetPosition(planetName)
+        // Get orbital elements for this date
+        val elements = getPlanetOrbitalElements(date, planetName)
+
+        // If we don't have elements, return default position (should not happen in production)
+        if (elements == null) {
+            Timber.e("Missing orbital elements for $planetName")
+            return SkyCoordinate(0f, 0f)
         }
 
-        // Calculate planet's heliocentric position
-        val helioCoords = calculateHeliocentricCoordinates(orbitalElements)
+        // Calculate heliocentric coordinates
+        val helioCoords = calculateHeliocentricCoordinates(elements)
 
-        // Get Earth's position to calculate geocentric position
+        // Get Earth's position
         val earthElements = getPlanetOrbitalElements(date, "Earth")!!
         val earthCoords = calculateHeliocentricCoordinates(earthElements)
 
-        // Calculate geocentric position (relative to Earth)
+        // Calculate geocentric coordinates
         val xGeo = helioCoords.x - earthCoords.x
         val yGeo = helioCoords.y - earthCoords.y
         val zGeo = helioCoords.z - earthCoords.z
@@ -316,32 +317,14 @@ object AstronomyUtils {
         if (ra < 0) ra += 360f
         val dec = asin(zGeo / geocentricDistance) * RADIANS_TO_DEGREES
 
-        // Get local sidereal time
+        // Calculate local sidereal time
         val lst = calculateSiderealTime(date, longitude)
 
         // Convert to horizontal coordinates
         return equatorialToHorizontal(ra, dec, latitude, lst)
     }
 
-    // Temporary function for planet positions while we implement full orbital calculations
-    private fun dummyPlanetPosition(planetName: String): SkyCoordinate {
-        // Create a distribution of planets that will be visible in the sky
-        val baseAzimuth = when (planetName) {
-            "Mercury" -> 160f
-            "Venus" -> 200f
-            "Mars" -> 240f
-            "Jupiter" -> 280f
-            "Saturn" -> 320f
-            else -> 0f
-        }
-
-        // Put them at a good altitude for viewing
-        val altitude = 25f
-
-        return SkyCoordinate(baseAzimuth, altitude)
-    }
-
-    // Data class to hold orbital elements
+    // Data class for orbital elements
     private data class OrbitalElements(
         val a: Float,      // Semi-major axis (AU)
         val e: Float,      // Eccentricity
@@ -351,7 +334,7 @@ object AstronomyUtils {
         val l: Float       // Mean longitude (radians)
     )
 
-    // Get planetary orbital elements based on time
+    // Get orbital elements for each planet
     private fun getPlanetOrbitalElements(date: Date, planetName: String): OrbitalElements? {
         val T = julianCenturies(date).toFloat()
 
@@ -411,8 +394,8 @@ object AstronomyUtils {
     // Calculate heliocentric coordinates from orbital elements
     private fun calculateHeliocentricCoordinates(elements: OrbitalElements): Vector3 {
         // Calculate the planet's mean anomaly
-        val m = (elements.l - elements.pi) % PI2
-        if (m < 0) m + PI2
+        var m = (elements.l - elements.pi) % PI2
+        if (m < 0) m += PI2
 
         // Solve Kepler's equation for eccentric anomaly
         var e0 = m
