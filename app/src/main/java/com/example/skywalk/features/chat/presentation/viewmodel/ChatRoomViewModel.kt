@@ -80,12 +80,20 @@ class ChatRoomViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-
     private fun loadMessages(chatRoomId: String) {
         viewModelScope.launch {
             _uiState.value = ChatRoomUiState.Loading
 
             try {
+                // Add this line to set a timeout for the Loading state
+                // This ensures we transition to Success state even if no messages are received
+                launch {
+                    kotlinx.coroutines.delay(2000) // 2 seconds timeout
+                    if (_uiState.value is ChatRoomUiState.Loading) {
+                        _uiState.value = ChatRoomUiState.Success
+                    }
+                }
+
                 getChatMessagesUseCase(chatRoomId)
                     .catch { e ->
                         Timber.e(e, "Error loading messages")

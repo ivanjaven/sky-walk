@@ -159,14 +159,15 @@ fun ChatRoomScreen(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
+                                .fillMaxWidth() // Ensure box takes full width
                                 .padding(16.dp),
-                            contentAlignment = Alignment.Center
+                            contentAlignment = Alignment.Center // Center content both horizontally and vertically
                         ) {
                             Text(
                                 text = "No messages yet.\nSay hello to start a conversation!",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center // Center the text within the Text composable
                             )
                         }
                     } else {
