@@ -387,6 +387,30 @@ object AstronomyUtils {
                 pi = (92.59887831f - 0.41897216f * T) * DEGREES_TO_RADIANS,
                 l = ((49.95424423f + 1222.49362201f * T) % 360f) * DEGREES_TO_RADIANS
             )
+            "Uranus" -> OrbitalElements(
+                a = 19.19126393f + 0.00001021f * T,
+                e = 0.04716771f - 0.00001971f * T,
+                i = (0.76986067f + 0.00000152f * T) * DEGREES_TO_RADIANS,
+                omega = (74.00595701f + 0.04240589f * T) * DEGREES_TO_RADIANS,
+                pi = (170.95427630f + 0.40805281f * T) * DEGREES_TO_RADIANS,
+                l = ((313.23810451f + 1542.79644333f * T) % 360f) * DEGREES_TO_RADIANS
+            )
+            "Neptune" -> OrbitalElements(
+                a = 30.06896348f - 0.00016222f * T,
+                e = 0.00858587f - 0.00005160f * T,
+                i = (1.76917570f - 0.00006953f * T) * DEGREES_TO_RADIANS,
+                omega = (131.78405702f - 0.00572588f * T) * DEGREES_TO_RADIANS,
+                pi = (44.97169656f - 0.32241464f * T) * DEGREES_TO_RADIANS,
+                l = ((304.88003307f + 786.12999045f * T) % 360f) * DEGREES_TO_RADIANS
+            )
+            "Pluto" -> OrbitalElements(
+                a = 39.48168677f - 0.00031426f * T,
+                e = 0.24880766f + 0.00006465f * T,
+                i = (17.14175158f + 0.00000531f * T) * DEGREES_TO_RADIANS,
+                omega = (110.30393684f - 0.01183482f * T) * DEGREES_TO_RADIANS,
+                pi = (224.06891629f - 0.04062942f * T) * DEGREES_TO_RADIANS,
+                l = ((238.92903833f + 522.47962357f * T) % 360f) * DEGREES_TO_RADIANS
+            )
             else -> null
         }
     }

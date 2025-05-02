@@ -204,6 +204,30 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
                 magnitude = 0.6f,
                 imageResourceId = R.drawable.saturn,
                 type = "Planet"
+            ),
+            // Add Uranus
+            CelestialObject(
+                name = "Uranus",
+                skyCoordinate = SkyCoordinate(0f, 0f),
+                magnitude = 5.7f,
+                imageResourceId = R.drawable.uranus,
+                type = "Planet"
+            ),
+            // Add Neptune
+            CelestialObject(
+                name = "Neptune",
+                skyCoordinate = SkyCoordinate(0f, 0f),
+                magnitude = 7.8f,
+                imageResourceId = R.drawable.neptune,
+                type = "Planet"
+            ),
+            // Add Pluto (dwarf planet)
+            CelestialObject(
+                name = "Pluto",
+                skyCoordinate = SkyCoordinate(0f, 0f),
+                magnitude = 14.4f,
+                imageResourceId = R.drawable.pluto,
+                type = "Dwarf Planet"
             )
         )
 

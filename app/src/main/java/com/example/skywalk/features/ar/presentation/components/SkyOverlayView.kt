@@ -181,12 +181,16 @@ class SkyOverlayView @JvmOverloads constructor(
                     val originalBitmap = BitmapFactory.decodeResource(resources, obj.imageResourceId)
 
                     val scaleFactor = when (obj.name) {
-                        "Sun" -> 0.45f
-                        "Moon" -> 0.36f
-                        "Jupiter" -> 0.24f
-                        "Saturn" -> 0.24f
-                        "Venus" -> 0.20f
-                        else -> 0.18f
+                        "Sun" -> 0.28f
+                        "Moon" -> 0.23f
+                        "Jupiter" -> 0.14f
+                        "Saturn" -> 0.14f
+                        "Venus" -> 0.10f
+                        "Mars" -> 0.18f
+                        "Uranus" -> 0.08f    // Smaller size for Uranus
+                        "Neptune" -> 0.07f   // Smaller size for Neptune
+                        "Pluto" -> 0.05f
+                        else -> 0.10f
                     }
 
                     val minDimension = min(viewWidth, viewHeight)
