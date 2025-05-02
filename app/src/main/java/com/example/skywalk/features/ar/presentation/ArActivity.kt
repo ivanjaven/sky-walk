@@ -17,6 +17,8 @@ import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
 import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -42,7 +44,6 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
-import android.graphics.Color
 
 class ARActivity : ComponentActivity() {
     // View references
@@ -50,8 +51,14 @@ class ARActivity : ComponentActivity() {
     private lateinit var skyOverlayView: SkyOverlayView
     private lateinit var backButton: ImageButton
     private lateinit var captureButton: ImageButton
-    // Add new constellation toggle button
     private lateinit var constellationToggleButton: ImageButton
+    private lateinit var cameraToggleButton: ImageButton
+
+    // New UI components for targeting feature
+    private lateinit var objectInfoPanel: LinearLayout
+    private lateinit var objectNameText: TextView
+    private lateinit var objectDescriptionText: TextView
+    private lateinit var targetingReticle: View
 
     // Camera components
     private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
@@ -68,13 +75,8 @@ class ARActivity : ComponentActivity() {
     private val MAX_ZOOM = 1.5f
     private val ZOOM_SPEED = 0.5f
 
-    // Constellation toggle state
+    // State tracking
     private var showConstellations = true
-
-    // Add a new button for camera toggle
-    private lateinit var cameraToggleButton: ImageButton
-
-    // Add a state tracker for camera mode
     private var cameraEnabled = true
 
     private val requestPermissionsLauncher = registerForActivityResult(
@@ -123,8 +125,13 @@ class ARActivity : ComponentActivity() {
         backButton = findViewById(R.id.backButton)
         captureButton = findViewById(R.id.captureButton)
         constellationToggleButton = findViewById(R.id.constellationToggleButton)
-        // Initialize new camera toggle button
         cameraToggleButton = findViewById(R.id.cameraToggleButton)
+
+        // Initialize new targeting UI components
+        objectInfoPanel = findViewById(R.id.objectInfoPanel)
+        objectNameText = findViewById(R.id.objectNameText)
+        objectDescriptionText = findViewById(R.id.objectDescriptionText)
+        targetingReticle = findViewById(R.id.targetingReticle)
 
         // Initialize ViewModel
         astronomyViewModel = AstronomyViewModel(application)
@@ -137,6 +144,36 @@ class ARActivity : ComponentActivity() {
 
         // Initialize the SkyOverlayView
         skyOverlayView.initialize(astronomyViewModel)
+
+        // Register as a listener for object focus events
+        skyOverlayView.addObjectInfoListener { obj, name, description ->
+            runOnUiThread {
+                if (obj != null && name.isNotEmpty()) {
+                    // Show the info panel with object details
+                    objectNameText.text = name
+                    objectDescriptionText.text = description
+
+                    // Make panel visible with animation
+                    if (objectInfoPanel.visibility != View.VISIBLE) {
+                        objectInfoPanel.alpha = 0f
+                        objectInfoPanel.visibility = View.VISIBLE
+                        objectInfoPanel.animate().alpha(1f).setDuration(300).start()
+                    }
+
+                    // Highlight the targeting reticle
+                    targetingReticle.setBackgroundResource(R.drawable.targeting_circle_active)
+                } else {
+                    // Hide the info panel with animation
+                    if (objectInfoPanel.visibility == View.VISIBLE) {
+                        objectInfoPanel.animate().alpha(0f).setDuration(300)
+                            .withEndAction { objectInfoPanel.visibility = View.GONE }.start()
+                    }
+
+                    // Reset the targeting reticle
+                    targetingReticle.setBackgroundResource(R.drawable.targeting_circle)
+                }
+            }
+        }
 
         // Set up back button
         backButton.setOnClickListener {
@@ -157,9 +194,6 @@ class ARActivity : ComponentActivity() {
             updateConstellationButtonAppearance()
         }
 
-        // Initialize new camera toggle button
-        cameraToggleButton = findViewById(R.id.cameraToggleButton)
-
         // Add camera toggle button click listener
         cameraToggleButton.setOnClickListener {
             toggleCameraMode()
@@ -178,7 +212,6 @@ class ARActivity : ComponentActivity() {
         }
     }
 
-    // Add the toggle camera mode function
     private fun toggleCameraMode() {
         cameraEnabled = !cameraEnabled
 
@@ -186,7 +219,7 @@ class ARActivity : ComponentActivity() {
             // Show camera feed
             previewView.visibility = View.VISIBLE
             // Set transparent background
-            skyOverlayView.setBackgroundColor(Color.TRANSPARENT)
+            skyOverlayView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
             skyOverlayView.setUseGalaxyBackground(false)
             // Re-start camera if needed
             if (!this::cameraProviderFuture.isInitialized || cameraProviderFuture.isCancelled) {
@@ -335,9 +368,7 @@ class ARActivity : ComponentActivity() {
         // Pinch to zoom gesture detector
         scaleGestureDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
-                // FIXED: Adjust zoom based on the scale factor - reversed the calculation
-                // Instead of dividing by the scale factor, multiply by it
-
+                // Adjust zoom based on the scale factor
                 currentZoom *= detector.scaleFactor
 
                 // Constrain zoom
@@ -437,6 +468,8 @@ class ARActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // Remove the object info listener to prevent memory leaks
+        skyOverlayView.removeObjectInfoListener { _, _, _ -> }
         cameraExecutor.shutdown()
     }
 }

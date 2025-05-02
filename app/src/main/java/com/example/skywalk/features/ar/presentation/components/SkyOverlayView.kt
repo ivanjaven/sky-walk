@@ -16,6 +16,8 @@ import com.example.skywalk.features.ar.utils.AstronomyUtils
 import timber.log.Timber
 import java.util.Date
 import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 class SkyOverlayView @JvmOverloads constructor(
     context: Context,
@@ -66,7 +68,6 @@ class SkyOverlayView @JvmOverloads constructor(
         color = Color.WHITE
     }
 
-
     private val compassPaint = Paint().apply {
         isAntiAlias = true
         textSize = 32f
@@ -92,7 +93,6 @@ class SkyOverlayView @JvmOverloads constructor(
         color = Color.argb(220, 100, 150, 255) // Made more opaque (180 to 220)
     }
 
-
     private val constellationLabelPaint = Paint().apply {
         isAntiAlias = true
         textSize = 30f  // INCREASED from 24f to 30f
@@ -100,6 +100,63 @@ class SkyOverlayView @JvmOverloads constructor(
         setShadowLayer(4f, 0f, 0f, Color.BLACK)  // Added larger shadow
         textAlign = Paint.Align.CENTER
     }
+
+    // Focused object tracking
+    private var focusedObject: CelestialObject? = null
+    private var focusedStar: Star? = null
+    private var focusedConstellation: Constellation? = null
+    private val CENTER_FOCUS_RADIUS = 60f
+    private val objectInfoListeners = mutableListOf<(Any?, String, String) -> Unit>()
+
+    // Description maps
+    private val planetDescriptions = mapOf(
+        "Sun" to "The star at the center of our Solar System. It's about 93 million miles from Earth.",
+        "Moon" to "Earth's only natural satellite, orbiting at an average distance of 238,855 miles.",
+        "Mercury" to "The smallest and innermost planet in the Solar System, orbiting the Sun every 88 days.",
+        "Venus" to "The second planet from the Sun, similar in size to Earth with a thick toxic atmosphere.",
+        "Mars" to "The fourth planet from the Sun, known as the Red Planet due to iron oxide on its surface.",
+        "Jupiter" to "The largest planet in the Solar System, a gas giant with a distinctive Great Red Spot.",
+        "Saturn" to "The sixth planet from the Sun, famous for its extensive ring system.",
+        "Uranus" to "The seventh planet from the Sun, an ice giant with a tilted rotation axis.",
+        "Neptune" to "The eighth planet from the Sun, the farthest known planet with strong winds.",
+        "Pluto" to "A dwarf planet in the Kuiper belt, formerly classified as the ninth planet."
+    )
+
+    private val starDescriptions = mapOf(
+        "Sirius" to "The brightest star in the night sky, located in Canis Major, 8.6 light-years away.",
+        "Canopus" to "The second brightest star in the night sky, located in Carina, 310 light-years away.",
+        "Vega" to "The fifth brightest star in the night sky, part of Lyra constellation, 25 light-years away.",
+        "Arcturus" to "The brightest star in the northern celestial hemisphere, in Boötes, 37 light-years away.",
+        "Capella" to "The sixth brightest star in the night sky, in Auriga, 43 light-years away.",
+        "Rigel" to "A blue supergiant star in Orion, approximately 860 light-years from Earth.",
+        "Betelgeuse" to "A red supergiant star in Orion, one of the largest stars visible to the naked eye.",
+        "Procyon" to "The eighth brightest star in the night sky, in Canis Minor, 11.5 light-years away.",
+        "Altair" to "The twelfth brightest star in the night sky, in Aquila, 16.7 light-years from Earth.",
+        "Antares" to "A red supergiant star in Scorpius, approximately 550 light-years from Earth.",
+        "Deneb" to "The 19th brightest star and part of the Summer Triangle, in Cygnus.",
+        "Regulus" to "The brightest star in Leo, approximately 79 light-years from Earth.",
+        "Spica" to "The brightest star in Virgo, a binary star system 250 light-years from Earth.",
+        "Pollux" to "The brightest star in Gemini, an orange-hued giant 34 light-years from Earth.",
+        "Fomalhaut" to "The 18th brightest star, with a confirmed exoplanet, in Piscis Austrinus.",
+        "Polaris" to "The North Star, used for navigation for centuries, in Ursa Minor."
+    )
+
+    private val constellationDescriptions = mapOf(
+        "Orion" to "One of the most recognizable constellations, depicting a hunter with a belt of three stars.",
+        "Ursa Major" to "The Great Bear, containing the Big Dipper asterism visible throughout the year.",
+        "Ursa Minor" to "The Little Bear, containing the Little Dipper and Polaris (the North Star).",
+        "Cassiopeia" to "Named after the vain queen in Greek mythology, with a distinctive W-shaped pattern.",
+        "Leo" to "Represents the Nemean Lion from Greek mythology, visible in spring.",
+        "Scorpius" to "Resembles a scorpion with a distinctive curved tail, visible in summer.",
+        "Cygnus" to "Represents a swan flying along the Milky Way, with Deneb at its tail.",
+        "Lyra" to "A small constellation representing Orpheus' lyre, containing the bright star Vega.",
+        "Gemini" to "Represents the twins Castor and Pollux from Greek mythology, visible in winter.",
+        "Taurus" to "Depicts a bull, with the bright star Aldebaran as its eye and the Pleiades cluster.",
+        "Andromeda" to "Named after the princess from Greek mythology, contains the Andromeda Galaxy.",
+        "Sagittarius" to "Often depicted as a centaur drawing a bow, points toward the center of our galaxy.",
+        "Pisces" to "Depicts two fish connected by a cord, one of the zodiac constellations.",
+        "Virgo" to "One of the zodiac constellations, represents a maiden holding an ear of wheat (Spica)."
+    )
 
     // State tracking
     private var currentOrientation: DeviceOrientation? = null
@@ -128,6 +185,19 @@ class SkyOverlayView @JvmOverloads constructor(
 
     // Compass directions
     private val compassDirections = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+
+    // Add listener methods
+    fun addObjectInfoListener(listener: (Any?, String, String) -> Unit) {
+        objectInfoListeners.add(listener)
+    }
+
+    fun removeObjectInfoListener(listener: (Any?, String, String) -> Unit) {
+        objectInfoListeners.remove(listener)
+    }
+
+    private fun notifyObjectInfoListeners(obj: Any?, name: String, description: String) {
+        objectInfoListeners.forEach { it(obj, name, description) }
+    }
 
     fun initialize(viewModel: AstronomyViewModel) {
         this.viewModel = viewModel
@@ -386,6 +456,32 @@ class SkyOverlayView @JvmOverloads constructor(
 
                 // Draw the object
                 objectBitmaps[obj.imageResourceId]?.let { bitmap ->
+                    // Check if this is the focused object
+                    if (obj == focusedObject) {
+                        // Draw highlight effect
+                        val originalColor = paint.color
+                        val originalStyle = paint.style
+                        val originalWidth = paint.strokeWidth
+
+                        paint.style = Paint.Style.STROKE
+                        paint.strokeWidth = 4f
+                        paint.color = Color.YELLOW
+                        paint.alpha = 200
+
+                        canvas.drawCircle(
+                            screenX,
+                            screenY,
+                            bitmap.width / 1.8f,
+                            paint
+                        )
+
+                        // Reset paint
+                        paint.style = originalStyle
+                        paint.strokeWidth = originalWidth
+                        paint.color = originalColor
+                        paint.alpha = 255
+                    }
+
                     canvas.drawBitmap(
                         bitmap,
                         screenX - bitmap.width / 2f,
@@ -439,6 +535,9 @@ class SkyOverlayView @JvmOverloads constructor(
 
         // Draw current azimuth (compass direction)
         drawAzimuthIndicator(canvas, orientation.azimuth)
+
+        // Check for objects in focus
+        checkObjectInFocus()
     }
 
     /**
@@ -464,6 +563,20 @@ class SkyOverlayView @JvmOverloads constructor(
             var sumX = 0f
             var sumY = 0f
             var count = 0
+
+            // Check if this is the focused constellation
+            val isFocused = constellation == focusedConstellation
+
+            // If focused, save original paint properties and set highlight
+            if (isFocused) {
+                val originalColor = constellationPaint.color
+                val originalWidth = constellationPaint.strokeWidth
+                val originalAlpha = constellationPaint.alpha
+
+                constellationPaint.color = Color.YELLOW
+                constellationPaint.strokeWidth = 5f
+                constellationPaint.alpha = 230
+            }
 
             // For each line in the constellation
             for (line in constellation.lines) {
@@ -504,6 +617,13 @@ class SkyOverlayView @JvmOverloads constructor(
                     count += 2
                     isVisible = true
                 }
+            }
+
+            // Reset paint properties if this was the focused constellation
+            if (isFocused) {
+                constellationPaint.color = Color.argb(220, 100, 150, 255)
+                constellationPaint.strokeWidth = 3.5f
+                constellationPaint.alpha = 220
             }
 
             // If this constellation has visible lines, record its center
@@ -575,6 +695,37 @@ class SkyOverlayView @JvmOverloads constructor(
 
             // Set star color based on B-V index
             starPaint.color = star.getStarColor()
+
+            // Check if this is the focused star
+            if (star == focusedStar) {
+                // Save original paint settings
+                val originalColor = starPaint.color
+                val originalStyle = starPaint.style
+                val originalAlpha = starPaint.alpha
+
+                // Draw highlight effect
+                starPaint.style = Paint.Style.STROKE
+                starPaint.strokeWidth = 3f
+                starPaint.color = Color.YELLOW
+                starPaint.alpha = 200
+
+                // MODIFIED: Determine size based on magnitude
+                val starSize = when {
+                    star.magnitude < 0 -> 12f   // Increased from 8f
+                    star.magnitude < 1 -> 10f   // Increased from 6f
+                    star.magnitude < 2 -> 8f    // Increased from 5f
+                    star.magnitude < 3 -> 6.5f  // Increased from 4f
+                    star.magnitude < 4 -> 5f    // Increased from 3f
+                    else -> 3.5f               // Increased from 2f
+                }
+
+                canvas.drawCircle(screenX, screenY, starSize * 2.5f, starPaint)
+
+                // Reset paint
+                starPaint.style = originalStyle
+                starPaint.color = originalColor
+                starPaint.alpha = originalAlpha
+            }
 
             // MODIFIED: Determine size based on magnitude - INCREASED all sizes
             val starSize = when {
@@ -749,6 +900,167 @@ class SkyOverlayView @JvmOverloads constructor(
             viewHeight - 50f,
             compassPaint
         )
+    }
+
+    // Add this method to check for objects in focus
+    private fun checkObjectInFocus() {
+        // Center of the screen
+        val centerX = viewWidth / 2f
+        val centerY = viewHeight / 2f
+
+        // Reset focus flags
+        var foundFocus = false
+
+        // First check celestial objects (planets, sun, moon)
+        for (obj in celestialObjects) {
+            val screenCoordinates = AstronomyUtils.celestialToScreenCoordinates(
+                obj.skyCoordinate,
+                deviceLookVector ?: return,
+                deviceUpVector ?: return,
+                viewModel?.getFieldOfViewRadians() ?: return,
+                viewWidth,
+                viewHeight
+            ) ?: continue
+
+            val (screenX, screenY) = screenCoordinates
+            val distance = kotlin.math.sqrt((screenX - centerX).pow(2) + (screenY - centerY).pow(2))
+
+            if (distance < CENTER_FOCUS_RADIUS) {
+                if (focusedObject != obj || focusedStar != null || focusedConstellation != null) {
+                    focusedObject = obj
+                    focusedStar = null
+                    focusedConstellation = null
+
+                    val description = planetDescriptions[obj.name] ?: "A celestial object."
+                    notifyObjectInfoListeners(obj, obj.name, description)
+                }
+                foundFocus = true
+                break
+            }
+        }
+
+        // If no celestial object is in focus, check for stars
+        if (!foundFocus) {
+            // Current date and location for coordinate conversion
+            val currentDate = viewModel?.getCurrentDate() ?: Date()
+            val latitude = viewModel?.getLatitude() ?: 0f
+            val longitude = viewModel?.getLongitude() ?: 0f
+            val lst = AstronomyUtils.calculateSiderealTime(currentDate, longitude)
+
+            // Only check bright stars for performance (mag < 4)
+            val brightStars = stars.filter { it.magnitude < 4.0f }
+
+            for (star in brightStars) {
+                val horizontalCoord = AstronomyUtils.equatorialToHorizontal(
+                    star.skyCoordinate.rightAscension,
+                    star.skyCoordinate.declination,
+                    latitude,
+                    lst
+                )
+
+                // Skip stars below horizon
+                if (horizontalCoord.declination < 0) continue
+
+                val screenCoord = AstronomyUtils.celestialToScreenCoordinates(
+                    horizontalCoord,
+                    deviceLookVector ?: return,
+                    deviceUpVector ?: return,
+                    viewModel?.getFieldOfViewRadians() ?: return,
+                    viewWidth,
+                    viewHeight
+                ) ?: continue
+
+                val (screenX, screenY) = screenCoord
+                val distance = kotlin.math.sqrt((screenX - centerX).pow(2) + (screenY - centerY).pow(2))
+
+                if (distance < CENTER_FOCUS_RADIUS) {
+                    if (focusedStar != star || focusedObject != null || focusedConstellation != null) {
+                        focusedStar = star
+                        focusedObject = null
+                        focusedConstellation = null
+
+                        val starName = star.getDisplayName()
+                        val description = if (star.name != null) {
+                            // Known star with proper name
+                            starDescriptions[starName] ?: "A bright star with magnitude ${String.format("%.1f", star.magnitude)}"
+                        } else {
+                            // Catalog star without proper name
+                            "Star with magnitude ${String.format("%.1f", star.magnitude)}"
+                        }
+
+                        notifyObjectInfoListeners(star, starName, description)
+                    }
+                    foundFocus = true
+                    break
+                }
+            }
+        }
+
+        // If no celestial object or star is in focus, check for constellations
+        if (!foundFocus && showConstellations) {
+            // Only check major constellations (rank <= 2) for performance
+            val majorConstellations = constellations.filter { it.rank <= 2 }
+
+            for (constellation in majorConstellations) {
+                // Get the center point of the constellation
+                val center = constellation.getCenter()
+
+                // Current date and location for coordinate conversion
+                val currentDate = viewModel?.getCurrentDate() ?: Date()
+                val latitude = viewModel?.getLatitude() ?: 0f
+                val longitude = viewModel?.getLongitude() ?: 0f
+                val lst = AstronomyUtils.calculateSiderealTime(currentDate, longitude)
+
+                // Convert to horizontal coordinates
+                val horizontalCoord = AstronomyUtils.equatorialToHorizontal(
+                    center.rightAscension,
+                    center.declination,
+                    latitude,
+                    lst
+                )
+
+                // Skip if below horizon
+                if (horizontalCoord.declination < 0) continue
+
+                val screenCoord = AstronomyUtils.celestialToScreenCoordinates(
+                    horizontalCoord,
+                    deviceLookVector ?: return,
+                    deviceUpVector ?: return,
+                    viewModel?.getFieldOfViewRadians() ?: return,
+                    viewWidth,
+                    viewHeight
+                ) ?: continue
+
+                val (screenX, screenY) = screenCoord
+
+                // Use a larger radius for constellations since they're bigger
+                val distance = kotlin.math.sqrt((screenX - centerX).pow(2) + (screenY - centerY).pow(2))
+                val constellationRadius = CENTER_FOCUS_RADIUS * 1.5f
+
+                if (distance < constellationRadius) {
+                    if (focusedConstellation != constellation || focusedObject != null || focusedStar != null) {
+                        focusedConstellation = constellation
+                        focusedObject = null
+                        focusedStar = null
+
+                        val description = constellationDescriptions[constellation.name] ?:
+                        "A constellation visible in the night sky."
+
+                        notifyObjectInfoListeners(constellation, constellation.name, description)
+                    }
+                    foundFocus = true
+                    break
+                }
+            }
+        }
+
+        // If nothing is in focus, clear all focused objects
+        if (!foundFocus && (focusedObject != null || focusedStar != null || focusedConstellation != null)) {
+            focusedObject = null
+            focusedStar = null
+            focusedConstellation = null
+            notifyObjectInfoListeners(null, "", "")
+        }
     }
 
     /**
