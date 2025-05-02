@@ -21,7 +21,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-//import androidx.navigation.findStartDestination
 import com.example.skywalk.core.navigation.BottomNavItem
 import com.example.skywalk.core.ui.components.BottomNavigationBar
 import com.example.skywalk.features.arsky.presentation.ARSkyActivity
@@ -35,7 +34,7 @@ import com.example.skywalk.features.encyclopedia.presentation.screens.Encycloped
 import com.example.skywalk.features.encyclopedia.presentation.screens.EncyclopediaScreen
 import com.example.skywalk.features.encyclopedia.presentation.viewmodel.EncyclopediaViewModel
 import com.example.skywalk.features.home.presentation.screens.HomeScreen
-import com.example.skywalk.features.placeholder.presentation.screens.PlaceholderScreen
+import com.example.skywalk.features.socialmedia.presentation.viewmodel.SocialMediaViewModel
 import timber.log.Timber
 
 @Composable
@@ -43,6 +42,8 @@ fun MainScreen(
     onSignOut: () -> Unit
 ) {
     val navController = rememberNavController()
+    val authViewModel: AuthViewModel = viewModel()
+    val socialMediaViewModel: SocialMediaViewModel = viewModel()
 
     val bottomNavItems = listOf(
         BottomNavItem(
@@ -98,7 +99,9 @@ fun MainScreen(
         NavigationGraph(
             navController = navController,
             modifier = Modifier.padding(innerPadding),
-            onSignOut = onSignOut
+            onSignOut = onSignOut,
+            authViewModel = authViewModel,
+            socialMediaViewModel = socialMediaViewModel
         )
     }
 }
@@ -107,7 +110,9 @@ fun MainScreen(
 fun NavigationGraph(
     navController: NavHostController,
     modifier: Modifier = Modifier,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    authViewModel: AuthViewModel,
+    socialMediaViewModel: SocialMediaViewModel
 ) {
     NavHost(
         navController = navController,
@@ -162,33 +167,6 @@ fun NavigationGraph(
             }
         }
 
-            // OLD
-//        // Only updating the AR Sky relevant part
-//        composable("ar_sky") {
-//            val context = LocalContext.current
-//            LaunchedEffect(Unit) {
-//                try {
-//                    // Start the AR activity
-//                    val intent = Intent(context, ARSkyActivity::class.java)
-//                    context.startActivity(intent)
-//                    // Navigate back to avoid the composable staying in the backstack
-//                    navController.popBackStack()
-//                } catch (e: Exception) {
-//                    Timber.e(e, "Error launching AR activity: ${e.message}")
-//                    Toast.makeText(context, "Error starting AR experience. Please try again.", Toast.LENGTH_SHORT).show()
-//                    navController.popBackStack()
-//                }
-//            }
-//            // Show a loading screen while transitioning
-//            Box(
-//                modifier = Modifier.fillMaxSize(),
-//                contentAlignment = Alignment.Center
-//            ) {
-//                CircularProgressIndicator()
-//            }
-//        }
-
-        // NEW
         composable("ar_sky") {
             val context = LocalContext.current
             LaunchedEffect(Unit) {
@@ -214,9 +192,9 @@ fun NavigationGraph(
         }
 
         composable("profile") {
-            val authViewModel = viewModel<AuthViewModel>()
             ProfileScreen(
-                viewModel = authViewModel,
+                authViewModel = authViewModel,
+                socialMediaViewModel = socialMediaViewModel,
                 onSignOut = onSignOut
             )
         }

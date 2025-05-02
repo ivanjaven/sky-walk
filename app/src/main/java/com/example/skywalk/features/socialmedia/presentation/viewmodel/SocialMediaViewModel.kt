@@ -1,4 +1,3 @@
-// com/example/skywalk/features/socialmedia/presentation/viewmodel/SocialMediaViewModel.kt
 package com.example.skywalk.features.socialmedia.presentation.viewmodel
 
 import android.app.Application
@@ -37,6 +36,8 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     private val addCommentUseCase = AddCommentUseCase(repository)
     private val getCommentsBatchUseCase = GetCommentsBatchUseCase(repository)
     private val getOrCreateChatRoomUseCase = GetOrCreateChatRoomUseCase(chatRepository)
+    private val deletePostUseCase = DeletePostUseCase(repository) // Add this
+
     private val _isLoadingMoreComments = MutableStateFlow(false)
     val isLoadingMoreComments: StateFlow<Boolean> = _isLoadingMoreComments
     private val _hasMoreComments = MutableStateFlow(true)
@@ -58,6 +59,17 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     private val _posts = MutableStateFlow<List<Post>>(emptyList())
     val posts: StateFlow<List<Post>> = _posts
 
+    // User posts state
+    private val _userPosts = MutableStateFlow<List<Post>>(emptyList())
+    val userPosts: StateFlow<List<Post>> = _userPosts
+
+    // Loading states for user posts
+    private val _isLoadingUserPosts = MutableStateFlow(false)
+    val isLoadingUserPosts: StateFlow<Boolean> = _isLoadingUserPosts
+
+    private val _isRefreshingUserPosts = MutableStateFlow(false)
+    val isRefreshingUserPosts: StateFlow<Boolean> = _isRefreshingUserPosts
+
     // New post state
     private val _postContent = MutableStateFlow("")
     val postContent: StateFlow<String> = _postContent
@@ -67,6 +79,13 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
 
     private val _isSubmitting = MutableStateFlow(false)
     val isSubmitting: StateFlow<Boolean> = _isSubmitting
+
+    // Delete post state
+    private val _isDeletingPost = MutableStateFlow(false)
+    val isDeletingPost: StateFlow<Boolean> = _isDeletingPost
+
+    private val _deletePostError = MutableStateFlow<String?>(null)
+    val deletePostError: StateFlow<String?> = _deletePostError
 
     // Comments state - Map of postId to comments
     private val _commentsMap = MutableStateFlow<Map<String, List<Comment>>>(emptyMap())
@@ -124,6 +143,42 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
         loadInitialPosts()
     }
 
+    // New function for deleting posts
+    fun deletePost(postId: String) {
+        viewModelScope.launch {
+            _isDeletingPost.value = true
+            _deletePostError.value = null
+
+            try {
+                val result = deletePostUseCase(postId)
+
+                result.fold(
+                    onSuccess = {
+                        // Remove the post from both the main feed and user posts lists
+                        _posts.update { currentPosts ->
+                            currentPosts.filter { it.id != postId }
+                        }
+
+                        _userPosts.update { currentUserPosts ->
+                            currentUserPosts.filter { it.id != postId }
+                        }
+
+                        Timber.d("Post deleted successfully: $postId")
+                    },
+                    onFailure = { error ->
+                        _deletePostError.value = "Failed to delete post: ${error.message}"
+                        Timber.e(error, "Failed to delete post: $postId")
+                    }
+                )
+            } catch (e: Exception) {
+                _deletePostError.value = "Failed to delete post: ${e.message}"
+                Timber.e(e, "Error deleting post: $postId")
+            } finally {
+                _isDeletingPost.value = false
+            }
+        }
+    }
+
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
@@ -176,6 +231,66 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                 isLoading = false
                 Timber.e(e, "Error loading initial posts")
                 _uiState.value = SocialMediaUiState.Error(e.message ?: "Failed to load posts")
+            }
+        }
+    }
+
+    /**
+     * Loads posts for a specific user
+     */
+    fun loadUserPosts(userId: String) {
+        if (_isLoadingUserPosts.value) return
+
+        viewModelScope.launch {
+            _isLoadingUserPosts.value = true
+
+            try {
+                getPostsUseCase(50) // Get a larger number of posts to filter from
+                    .catch { e ->
+                        Timber.e(e, "Error loading user posts")
+                        _isLoadingUserPosts.value = false
+                    }
+                    .collect { posts ->
+                        // Filter to only show this user's posts
+                        val filteredPosts = posts.filter { it.userId == userId }
+                        _userPosts.value = filteredPosts
+                        _isLoadingUserPosts.value = false
+                    }
+            } catch (e: Exception) {
+                Timber.e(e, "Error in loadUserPosts")
+                _isLoadingUserPosts.value = false
+            }
+        }
+    }
+
+    /**
+     * Refreshes the user's posts
+     */
+    fun refreshUserPosts(userId: String) {
+        if (_isRefreshingUserPosts.value) return
+
+        viewModelScope.launch {
+            _isRefreshingUserPosts.value = true
+
+            try {
+                // Clear existing posts first
+                _userPosts.value = emptyList()
+
+                // Fetch new posts
+                getPostsUseCase(50)
+                    .catch { e ->
+                        Timber.e(e, "Error refreshing user posts")
+                        _isRefreshingUserPosts.value = false
+                    }
+                    .collect { posts ->
+                        // Filter to only show this user's posts
+                        val filteredPosts = posts.filter { it.userId == userId }
+                        _userPosts.value = filteredPosts
+                        _isRefreshingUserPosts.value = false
+                    }
+            } catch (e: Exception) {
+                Timber.e(e, "Error in refreshUserPosts")
+                _isRefreshingUserPosts.value = false
             }
         }
     }
@@ -313,6 +428,11 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
 
                         // Signal post creation success for UI feedback
                         _postCreationSuccess.value = true
+
+                        // Add the new post to userPosts too
+                        val currentUserPosts = _userPosts.value.toMutableList()
+                        currentUserPosts.add(0, post) // Add at the top
+                        _userPosts.value = currentUserPosts
                     },
                     onFailure = { error ->
                         Timber.e(error, "Error creating post")
@@ -365,6 +485,7 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun updatePostLikeStatus(postId: String, isLiked: Boolean) {
+        // Update in main posts list
         val currentPosts = _posts.value.toMutableList()
         val postIndex = currentPosts.indexOfFirst { it.id == postId }
 
@@ -379,6 +500,21 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
             )
             currentPosts[postIndex] = updatedPost
             _posts.value = currentPosts
+        }
+
+        // Also update in user posts list
+        val currentUserPosts = _userPosts.value.toMutableList()
+        val userPostIndex = currentUserPosts.indexOfFirst { it.id == postId }
+
+        if (userPostIndex != -1) {
+            val post = currentUserPosts[userPostIndex]
+
+            val updatedPost = post.copy(
+                isLikedByCurrentUser = isLiked,
+                likeCount = if (isLiked) post.likeCount + 1 else (post.likeCount - 1).coerceAtLeast(0)
+            )
+            currentUserPosts[userPostIndex] = updatedPost
+            _userPosts.value = currentUserPosts
         }
     }
 
@@ -506,6 +642,7 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
 
     // Method to update the post's comment count locally
     private fun updatePostCommentCount(postId: String, delta: Int) {
+        // Update in main posts list
         val currentPosts = _posts.value.toMutableList()
         val postIndex = currentPosts.indexOfFirst { it.id == postId }
 
@@ -516,6 +653,19 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
             )
             currentPosts[postIndex] = updatedPost
             _posts.value = currentPosts
+        }
+
+        // Also update in user posts list
+        val currentUserPosts = _userPosts.value.toMutableList()
+        val userPostIndex = currentUserPosts.indexOfFirst { it.id == postId }
+
+        if (userPostIndex != -1) {
+            val post = currentUserPosts[userPostIndex]
+            val updatedPost = post.copy(
+                commentCount = (post.commentCount + delta).coerceAtLeast(0)
+            )
+            currentUserPosts[userPostIndex] = updatedPost
+            _userPosts.value = currentUserPosts
         }
     }
 

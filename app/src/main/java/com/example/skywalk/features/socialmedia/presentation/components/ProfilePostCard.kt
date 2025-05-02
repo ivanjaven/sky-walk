@@ -4,7 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,20 +27,18 @@ import com.google.firebase.auth.FirebaseAuth
 import timber.log.Timber
 
 @Composable
-fun PostCard(
+fun ProfilePostCard(
     post: Post,
     timeAgo: String,
     onLikeClick: () -> Unit,
     onCommentClick: () -> Unit,
     onImageClick: (List<String>, Int) -> Unit,
-    onChatClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    isCurrentUserPost: Boolean,
     modifier: Modifier = Modifier
 ) {
-    // Get current user ID to check if the current user has liked
-    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
-
     // Debug log for post and comments
-    Timber.d("Rendering post ${post.id} with ${post.commentCount} comments and ${post.commentIds.size} commentIds")
+    Timber.d("Rendering profile post ${post.id} with ${post.commentCount} comments")
 
     Column(
         modifier = modifier
@@ -80,12 +78,15 @@ fun PostCard(
                 }
             }
 
-            // Chat icon (replacing the more options)
-            IconButton(onClick = onChatClick) {
-                Icon(
-                    imageVector = Icons.Filled.Email,
-                    contentDescription = "Message user"
-                )
+            // Delete button (only for current user's posts)
+            if (isCurrentUserPost) {
+                IconButton(onClick = onDeleteClick) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete post",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
 

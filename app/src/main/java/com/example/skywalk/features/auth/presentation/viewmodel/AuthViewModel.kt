@@ -1,14 +1,19 @@
 package com.example.skywalk.features.auth.presentation.viewmodel
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.skywalk.features.auth.data.repository.AuthRepositoryImpl
 import com.example.skywalk.features.auth.domain.models.User
 import com.example.skywalk.features.auth.domain.usecases.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.io.File
+import java.io.FileOutputStream
 
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -20,6 +25,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val signOutUseCase = SignOutUseCase(repository)
     private val getCurrentUserUseCase = GetCurrentUserUseCase(repository)
     private val isUserAuthenticatedUseCase = IsUserAuthenticatedUseCase(repository)
+    private val updateProfileUseCase = UpdateProfileUseCase(repository)
 
     // UI state
     private val _authState = MutableStateFlow<AuthState>(AuthState.Initial)
@@ -46,6 +52,13 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _displayNameError = MutableStateFlow<String?>(null)
     val displayNameError: StateFlow<String?> = _displayNameError
+
+    // Profile update states
+    private val _isUpdatingProfile = MutableStateFlow(false)
+    val isUpdatingProfile: StateFlow<Boolean> = _isUpdatingProfile
+
+    private val _profileUpdateError = MutableStateFlow<String?>(null)
+    val profileUpdateError: StateFlow<String?> = _profileUpdateError
 
     init {
         checkAuthState()
@@ -201,6 +214,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         if (_authState.value is AuthState.Error) {
             _authState.value = AuthState.Unauthenticated
         }
+        _profileUpdateError.value = null
     }
 
     private fun clearInputs() {
@@ -210,6 +224,52 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         _emailError.value = null
         _passwordError.value = null
         _displayNameError.value = null
+    }
+
+    // Updated method to update profile picture with improved performance
+    fun updateProfilePicture(imageUri: Uri) {
+        viewModelScope.launch {
+            _isUpdatingProfile.value = true
+            _profileUpdateError.value = null
+
+            try {
+                // Convert Uri to File on IO dispatcher for better performance
+                val tempFile = withContext(Dispatchers.IO) {
+                    val context = getApplication<Application>()
+                    val tempFile = File(context.cacheDir, "profile_image_${System.currentTimeMillis()}.jpg")
+
+                    context.contentResolver.openInputStream(imageUri)?.use { input ->
+                        FileOutputStream(tempFile).use { output ->
+                            // Use a buffer for faster copying
+                            val buffer = ByteArray(8192)
+                            var bytesRead: Int
+                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                output.write(buffer, 0, bytesRead)
+                            }
+                        }
+                    }
+                    tempFile
+                }
+
+                // Call the update profile use case
+                val result = updateProfileUseCase(photoFile = tempFile)
+
+                result.fold(
+                    onSuccess = {
+                        Timber.d("Profile picture updated successfully")
+                    },
+                    onFailure = { error ->
+                        _profileUpdateError.value = "Failed to update profile picture: ${error.message}"
+                        Timber.e(error, "Failed to update profile picture")
+                    }
+                )
+            } catch (e: Exception) {
+                _profileUpdateError.value = "Failed to update profile picture: ${e.message}"
+                Timber.e(e, "Error updating profile picture")
+            } finally {
+                _isUpdatingProfile.value = false
+            }
+        }
     }
 }
 

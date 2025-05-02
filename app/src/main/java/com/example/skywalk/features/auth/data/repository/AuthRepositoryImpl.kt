@@ -4,6 +4,7 @@ import com.example.skywalk.features.auth.data.remote.FirebaseAuthService
 import com.example.skywalk.features.auth.domain.models.User
 import com.example.skywalk.features.auth.domain.repository.AuthRepository
 import kotlinx.coroutines.flow.Flow
+import java.io.File
 
 class AuthRepositoryImpl : AuthRepository {
     private val firebaseAuthService = FirebaseAuthService()
@@ -29,5 +30,10 @@ class AuthRepositoryImpl : AuthRepository {
 
     override suspend fun isUserAuthenticated(): Boolean {
         return firebaseAuthService.isUserAuthenticated()
+    }
+
+    // Implement the new updateProfile method
+    override suspend fun updateProfile(displayName: String?, photoFile: File?): Result<User> {
+        return firebaseAuthService.updateProfile(displayName, photoFile)
     }
 }

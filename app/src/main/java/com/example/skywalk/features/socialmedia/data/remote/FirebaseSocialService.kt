@@ -11,9 +11,11 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Query
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import timber.log.Timber
 import java.io.File
@@ -34,41 +36,6 @@ class FirebaseSocialService {
     private val currentUserId: String?
         get() = auth.currentUser?.uid
 
-    suspend fun getPosts(limit: Int, lastPostId: String? = null): Flow<List<Post>> = callbackFlow {
-        var query = postsCollection
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .limit(limit.toLong())
-
-        // Apply pagination if lastPostId is provided
-        if (lastPostId != null) {
-            val lastPostDoc = postsCollection.document(lastPostId).get().await()
-            if (lastPostDoc.exists()) {
-                query = query.startAfter(lastPostDoc)
-            }
-        }
-
-        val listener = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                Timber.e(error, "Error fetching posts")
-                return@addSnapshotListener
-            }
-
-            if (snapshot != null) {
-                val posts = snapshot.documents.mapNotNull { doc ->
-                    try {
-                        parsePostDocument(doc)
-                    } catch (e: Exception) {
-                        Timber.e(e, "Error parsing post document")
-                        null
-                    }
-                }
-                trySend(posts)
-            }
-        }
-
-        awaitClose { listener.remove() }
-    }
-
     suspend fun getPostById(postId: String): Flow<Post?> = callbackFlow {
         val listener = postsCollection.document(postId)
             .addSnapshotListener { snapshot, error ->
@@ -79,12 +46,15 @@ class FirebaseSocialService {
                 }
 
                 if (snapshot != null && snapshot.exists()) {
-                    try {
-                        val post = parsePostDocument(snapshot)
-                        trySend(post)
-                    } catch (e: Exception) {
-                        Timber.e(e, "Error parsing post")
-                        trySend(null)
+                    // Launch a coroutine to handle async operations
+                    kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+                        try {
+                            val post = parsePostDocument(snapshot)
+                            trySend(post)
+                        } catch (e: Exception) {
+                            Timber.e(e, "Error parsing post")
+                            trySend(null)
+                        }
                     }
                 } else {
                     trySend(null)
@@ -121,8 +91,8 @@ class FirebaseSocialService {
             val postData = hashMapOf(
                 "id" to postId,
                 "userId" to userId,
-                "userName" to userName,
-                "userPhotoUrl" to userPhotoUrl,
+                "userName" to userName,  // Still store the name for fallback
+                "userPhotoUrl" to userPhotoUrl,  // Still store the photo URL for fallback
                 "content" to content,
                 "imageUrls" to imageUrls,
                 "location" to null, // Optional: Add location support later
@@ -136,7 +106,7 @@ class FirebaseSocialService {
             // Save post to Firestore
             postsCollection.document(postId).set(postData).await()
 
-            // Create the post object to return
+            // Create the post object to return, using the freshly fetched user info
             val post = Post(
                 id = postId,
                 userId = userId,
@@ -161,8 +131,62 @@ class FirebaseSocialService {
     }
 
     suspend fun deletePost(postId: String): Result<Unit> {
-        // Stub implementation since you don't want to implement it now
-        return Result.failure(IllegalStateException("Delete post functionality not implemented yet"))
+        return try {
+            val userId = currentUserId ?: return Result.failure(IllegalStateException("User not authenticated"))
+
+            // Get the post to verify ownership
+            val postDoc = postsCollection.document(postId).get().await()
+
+            if (!postDoc.exists()) {
+                return Result.failure(IllegalStateException("Post not found"))
+            }
+
+            val postUserId = postDoc.getString("userId")
+            if (postUserId != userId) {
+                return Result.failure(IllegalStateException("You can only delete your own posts"))
+            }
+
+            // Get image URLs to delete from storage
+            val imageUrls = postDoc.get("imageUrls") as? List<String> ?: emptyList()
+
+            // Use a batch to delete the post and related data
+            val batch = db.batch()
+
+            // Delete the post document
+            batch.delete(postsCollection.document(postId))
+
+            // Delete related comments
+            val commentsQuery = commentsCollection.whereEqualTo("postId", postId).get().await()
+            commentsQuery.documents.forEach { commentDoc ->
+                batch.delete(commentDoc.reference)
+            }
+
+            // Delete related likes
+            val likesQuery = likesCollection.whereEqualTo("postId", postId).get().await()
+            likesQuery.documents.forEach { likeDoc ->
+                batch.delete(likeDoc.reference)
+            }
+
+            // Commit the batch
+            batch.commit().await()
+
+            // Delete images from storage
+            imageUrls.forEach { imageUrl ->
+                try {
+                    // Extract the storage path from the URL
+                    val storageRef = storage.getReferenceFromUrl(imageUrl)
+                    storageRef.delete().await()
+                } catch (e: Exception) {
+                    Timber.e(e, "Error deleting image: $imageUrl")
+                    // Continue with other images
+                }
+            }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Timber.e(e, "Error deleting post: ${e.message}")
+            Result.failure(e)
+        }
     }
 
     suspend fun likePost(postId: String): Result<Unit> {
@@ -615,6 +639,49 @@ class FirebaseSocialService {
             likes = likes,
             commentIds = commentIds
         )
+    }
+
+    fun getPosts(limit: Int, lastPostId: String? = null): Flow<List<Post>> = callbackFlow {
+        var query = postsCollection
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .limit(limit.toLong())
+
+        // Apply pagination if lastPostId is provided
+        if (lastPostId != null) {
+            val lastPostDoc = postsCollection.document(lastPostId).get().await()
+            if (lastPostDoc.exists()) {
+                query = query.startAfter(lastPostDoc)
+            }
+        }
+
+        val listener = query.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Timber.e(error, "Error fetching posts")
+                return@addSnapshotListener
+            }
+
+            if (snapshot != null) {
+                // Launch a coroutine to handle async operations
+                kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+                    try {
+                        val posts = snapshot.documents.mapNotNull { doc ->
+                            try {
+                                parsePostDocument(doc)
+                            } catch (e: Exception) {
+                                Timber.e(e, "Error parsing post document")
+                                null
+                            }
+                        }
+                        trySend(posts)
+                    } catch (e: Exception) {
+                        Timber.e(e, "Error processing posts")
+                        trySend(emptyList())
+                    }
+                }
+            }
+        }
+
+        awaitClose { listener.remove() }
     }
 
     private fun File.toUri() = android.net.Uri.fromFile(this)
