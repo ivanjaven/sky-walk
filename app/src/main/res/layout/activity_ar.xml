@@ -29,6 +29,34 @@
         app:layout_constraintTop_toTopOf="parent"
         app:tint="@android:color/white" />
 
+    <!-- Camera Toggle Button - Moved to the top -->
+    <ImageButton
+        android:id="@+id/cameraToggleButton"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="16dp"
+        android:background="@drawable/circle_background"
+        android:contentDescription="Toggle camera mode"
+        android:padding="12dp"
+        android:src="@drawable/ic_camera_on"
+        app:layout_constraintEnd_toStartOf="@id/constellationToggleButton"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@android:color/white" />
+
+    <!-- Constellation Toggle Button -->
+    <ImageButton
+        android:id="@+id/constellationToggleButton"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="16dp"
+        android:background="@drawable/circle_background"
+        android:contentDescription="@string/toggle_constellations"
+        android:padding="12dp"
+        android:src="@drawable/ic_stars"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@android:color/white" />
+
     <ImageButton
         android:id="@+id/captureButton"
         android:layout_width="64dp"
@@ -41,20 +69,6 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:tint="@android:color/white" />
-
-    <!-- Add constellation toggle button -->
-    <ImageButton
-        android:id="@+id/constellationToggleButton"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_margin="16dp"
-        android:background="@drawable/circle_background"
-        android:contentDescription="@string/toggle_constellations"
-        android:padding="12dp"
-        android:src="@drawable/ic_stars"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
         app:tint="@android:color/white" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

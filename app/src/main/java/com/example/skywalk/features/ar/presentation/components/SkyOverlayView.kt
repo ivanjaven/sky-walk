@@ -23,6 +23,21 @@ class SkyOverlayView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
+    // Add members for galaxy background
+    private var useGalaxyBackground = false
+    private var galaxyPaint = Paint()
+    private var galaxyStars = mutableListOf<GalaxyStar>()
+    private val random = java.util.Random()
+
+    // Inner class for galaxy stars
+    private data class GalaxyStar(
+        val x: Float,
+        val y: Float,
+        val size: Float,
+        val alpha: Int,
+        val color: Int
+    )
+
     // Paint objects
     private val paint = Paint().apply {
         isAntiAlias = true
@@ -194,6 +209,63 @@ class SkyOverlayView @JvmOverloads constructor(
         }
     }
 
+    private fun initGalaxyBackground() {
+        // Clear existing stars
+        galaxyStars.clear()
+
+        // Create random stars for the galaxy background
+        val numStars = 600
+        for (i in 0 until numStars) {
+            val x = random.nextFloat() * width
+            val y = random.nextFloat() * height
+            val size = when {
+                random.nextFloat() < 0.05f -> random.nextFloat() * 3f + 2f // Bright stars
+                random.nextFloat() < 0.2f -> random.nextFloat() * 2f + 1f // Medium stars
+                else -> random.nextFloat() * 1f + 0.5f // Small stars
+            }
+
+            val alpha = (random.nextFloat() * 155 + 100).toInt()
+
+            // Generate star color - mostly white, some blue/yellow/red
+            val color = when {
+                random.nextFloat() < 0.7f -> Color.WHITE // 70% white stars
+                random.nextFloat() < 0.5f -> Color.rgb(155, 190, 255) // 15% blue stars
+                random.nextFloat() < 0.5f -> Color.rgb(255, 240, 180) // 7.5% yellow stars
+                else -> Color.rgb(255, 170, 170) // 7.5% red stars
+            }
+
+            galaxyStars.add(GalaxyStar(x, y, size, alpha, color))
+        }
+    }
+
+    // Set galaxy background mode
+    fun setUseGalaxyBackground(use: Boolean) {
+        useGalaxyBackground = use
+
+        // Set plain black background instead of generating stars
+        setBackgroundColor(if (use) Color.BLACK else Color.TRANSPARENT)
+
+        // Optionally add just a few stars (much fewer than before)
+        if (use) {
+            // Clear existing stars
+            galaxyStars.clear()
+
+            // Add just a few subtle stars (reduced from 600 to 100)
+//            val numStars = 10
+//            for (i in 0 until numStars) {
+//                val x = random.nextFloat() * width
+//                val y = random.nextFloat() * height
+//                val size = random.nextFloat() * 1.5f + 0.5f // Smaller stars
+//                val alpha = (random.nextFloat() * 100 + 50).toInt() // More transparent
+//                val color = Color.WHITE // Just white stars
+//
+//                galaxyStars.add(GalaxyStar(x, y, size, alpha, color))
+//            }
+        }
+
+        invalidate()
+    }
+
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         viewWidth = w
@@ -203,10 +275,48 @@ class SkyOverlayView @JvmOverloads constructor(
         objectBitmaps.values.forEach { it.recycle() }
         objectBitmaps.clear()
         celestialObjects.let { prepareObjectBitmaps(it) }
+
+        // Re-initialize galaxy if needed
+        if (useGalaxyBackground) {
+            initGalaxyBackground()
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
+        // Draw galaxy background first if enabled
+        if (useGalaxyBackground) {
+            // Fill with black (already done with backgroundColor, but just to be sure)
+            canvas.drawColor(Color.BLACK)
+
+            // Draw galaxy stars
+            for (star in galaxyStars) {
+                galaxyPaint.color = star.color
+                galaxyPaint.alpha = star.alpha
+                canvas.drawCircle(star.x, star.y, star.size, galaxyPaint)
+
+                // Add glow to larger stars
+                if (star.size > 1.5f) {
+                    galaxyPaint.alpha = (star.alpha * 0.4f).toInt()
+                    canvas.drawCircle(star.x, star.y, star.size * 2f, galaxyPaint)
+                }
+            }
+
+            // Add a subtle blue-purple gradient for nebula effect
+            val gradientPaint = Paint()
+            gradientPaint.shader = RadialGradient(
+                width / 2f, height / 2f,
+                width * 0.8f,
+                intArrayOf(
+                    Color.argb(5, 100, 50, 160),  // Very transparent purple
+                    Color.argb(15, 30, 40, 120),  // Slightly more visible blue
+                    Color.argb(0, 0, 0, 0)        // Transparent
+                ),
+                floatArrayOf(0f, 0.5f, 1f),
+                Shader.TileMode.CLAMP
+            )
+
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), gradientPaint)
+        }
 
         // Get current orientation vectors
         val lookVector = deviceLookVector

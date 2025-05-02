@@ -42,6 +42,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
+import android.graphics.Color
 
 class ARActivity : ComponentActivity() {
     // View references
@@ -69,6 +70,12 @@ class ARActivity : ComponentActivity() {
 
     // Constellation toggle state
     private var showConstellations = true
+
+    // Add a new button for camera toggle
+    private lateinit var cameraToggleButton: ImageButton
+
+    // Add a state tracker for camera mode
+    private var cameraEnabled = true
 
     private val requestPermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -115,8 +122,9 @@ class ARActivity : ComponentActivity() {
         skyOverlayView = findViewById(R.id.skyOverlayView)
         backButton = findViewById(R.id.backButton)
         captureButton = findViewById(R.id.captureButton)
-        // Initialize constellation toggle button
         constellationToggleButton = findViewById(R.id.constellationToggleButton)
+        // Initialize new camera toggle button
+        cameraToggleButton = findViewById(R.id.cameraToggleButton)
 
         // Initialize ViewModel
         astronomyViewModel = AstronomyViewModel(application)
@@ -149,6 +157,14 @@ class ARActivity : ComponentActivity() {
             updateConstellationButtonAppearance()
         }
 
+        // Initialize new camera toggle button
+        cameraToggleButton = findViewById(R.id.cameraToggleButton)
+
+        // Add camera toggle button click listener
+        cameraToggleButton.setOnClickListener {
+            toggleCameraMode()
+        }
+
         // Check and request camera permission
         checkCameraPermission()
 
@@ -159,6 +175,55 @@ class ARActivity : ComponentActivity() {
                 val longitude = it.getDouble("longitude")
                 astronomyViewModel.setLocation(latitude, longitude)
             }
+        }
+    }
+
+    // Add the toggle camera mode function
+    private fun toggleCameraMode() {
+        cameraEnabled = !cameraEnabled
+
+        if (cameraEnabled) {
+            // Show camera feed
+            previewView.visibility = View.VISIBLE
+            // Set transparent background
+            skyOverlayView.setBackgroundColor(Color.TRANSPARENT)
+            skyOverlayView.setUseGalaxyBackground(false)
+            // Re-start camera if needed
+            if (!this::cameraProviderFuture.isInitialized || cameraProviderFuture.isCancelled) {
+                startCamera()
+            } else {
+                try {
+                    val cameraProvider = cameraProviderFuture.get()
+                    if (cameraProvider.isBound(Preview.Builder().build())) {
+                        // Camera is already bound, just make sure it's visible
+                        previewView.visibility = View.VISIBLE
+                    } else {
+                        // Re-bind camera
+                        startCamera()
+                    }
+                } catch (e: Exception) {
+                    Timber.e(e, "Error checking camera status")
+                    startCamera() // Try to restart camera
+                }
+            }
+        } else {
+            // Hide camera feed
+            previewView.visibility = View.GONE
+            // Set plain black background
+            skyOverlayView.setUseGalaxyBackground(true)
+        }
+
+        // Update button appearance
+        updateCameraToggleButtonAppearance()
+    }
+
+    private fun updateCameraToggleButtonAppearance() {
+        if (cameraEnabled) {
+            cameraToggleButton.setImageResource(R.drawable.ic_camera_on)
+            cameraToggleButton.contentDescription = "Turn off camera"
+        } else {
+            cameraToggleButton.setImageResource(R.drawable.ic_camera_off)
+            cameraToggleButton.contentDescription = "Turn on camera"
         }
     }
 
@@ -270,8 +335,10 @@ class ARActivity : ComponentActivity() {
         // Pinch to zoom gesture detector
         scaleGestureDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
-                // Adjust zoom based on the scale factor
-                currentZoom *= (1.0f / (1.0f + (detector.scaleFactor - 1.0f) * ZOOM_SPEED))
+                // FIXED: Adjust zoom based on the scale factor - reversed the calculation
+                // Instead of dividing by the scale factor, multiply by it
+
+                currentZoom *= detector.scaleFactor
 
                 // Constrain zoom
                 currentZoom = max(MIN_ZOOM, min(MAX_ZOOM, currentZoom))
