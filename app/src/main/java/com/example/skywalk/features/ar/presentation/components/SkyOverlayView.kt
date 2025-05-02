@@ -6,6 +6,7 @@ import android.util.AttributeSet
 import android.view.View
 import androidx.lifecycle.findViewTreeLifecycleOwner
 import com.example.skywalk.features.ar.domain.models.CelestialObject
+import com.example.skywalk.features.ar.domain.models.Constellation
 import com.example.skywalk.features.ar.domain.models.DeviceOrientation
 import com.example.skywalk.features.ar.domain.models.SkyCoordinate
 import com.example.skywalk.features.ar.domain.models.Star
@@ -67,12 +68,30 @@ class SkyOverlayView @JvmOverloads constructor(
         pathEffect = DashPathEffect(floatArrayOf(10f, 10f), 0f)
     }
 
+    // Add constellation paint objects
+    private val constellationPaint = Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.STROKE
+        strokeWidth = 1.5f
+        color = Color.argb(180, 100, 150, 255) // Soft blue
+    }
+
+    private val constellationLabelPaint = Paint().apply {
+        isAntiAlias = true
+        textSize = 24f
+        color = Color.argb(200, 150, 200, 255)
+        setShadowLayer(3f, 0f, 0f, Color.BLACK)
+        textAlign = Paint.Align.CENTER
+    }
+
     // State tracking
     private var currentOrientation: DeviceOrientation? = null
     private var deviceLookVector: Vector3? = null
     private var deviceUpVector: Vector3? = null
     private var celestialObjects: List<CelestialObject> = emptyList()
     private var stars: List<Star> = emptyList()
+    private var constellations: List<Constellation> = emptyList()
+    private var showConstellations = true
     private val objectBitmaps = mutableMapOf<Int, Bitmap>()
     private var viewModel: AstronomyViewModel? = null
     private var viewWidth = 0
@@ -120,6 +139,17 @@ class SkyOverlayView @JvmOverloads constructor(
 
             viewModel.stars.observe(lifecycleOwner) { newStars ->
                 stars = newStars
+                invalidate()
+            }
+
+            // Add constellation observers
+            viewModel.constellations.observe(lifecycleOwner) { constellations ->
+                this.constellations = constellations
+                invalidate()
+            }
+
+            viewModel.showConstellations.observe(lifecycleOwner) { show ->
+                this.showConstellations = show
                 invalidate()
             }
         }
@@ -205,6 +235,11 @@ class SkyOverlayView @JvmOverloads constructor(
         val longitude = viewModel?.getLongitude() ?: 0f
         val lst = AstronomyUtils.calculateSiderealTime(currentDate, longitude)
 
+        // Draw constellations if enabled (draw BEFORE stars so they appear behind)
+        if (showConstellations) {
+            drawConstellations(canvas, lookVector, upVector, fieldOfView, lst, latitude)
+        }
+
         // Draw stars
         drawStars(canvas, lookVector, upVector, fieldOfView, lst, latitude)
 
@@ -288,6 +323,99 @@ class SkyOverlayView @JvmOverloads constructor(
 
         // Draw current azimuth (compass direction)
         drawAzimuthIndicator(canvas, orientation.azimuth)
+    }
+
+    /**
+     * Draw constellations on the canvas
+     */
+    private fun drawConstellations(
+        canvas: Canvas,
+        lookVector: Vector3,
+        upVector: Vector3,
+        fieldOfView: Float,
+        localSiderealTime: Float,
+        latitude: Float
+    ) {
+        if (constellations.isEmpty()) return
+
+        // Store visible constellation centers for label placement
+        val visibleConstellationCenters = mutableMapOf<String, Pair<Float, Float>>()
+        val pointsCount = mutableMapOf<String, Int>()
+
+        // First, draw all constellation lines
+        for (constellation in constellations) {
+            var isVisible = false
+            var sumX = 0f
+            var sumY = 0f
+            var count = 0
+
+            // For each line in the constellation
+            for (line in constellation.lines) {
+                // Convert from equatorial to horizontal coordinates
+                val startCoord = AstronomyUtils.equatorialToHorizontal(
+                    line.startRa, line.startDec, latitude, localSiderealTime
+                )
+
+                val endCoord = AstronomyUtils.equatorialToHorizontal(
+                    line.endRa, line.endDec, latitude, localSiderealTime
+                )
+
+                // Skip if both points are below horizon
+                if (startCoord.declination < 0 && endCoord.declination < 0) {
+                    continue
+                }
+
+                // Calculate screen positions
+                val startScreen = AstronomyUtils.celestialToScreenCoordinates(
+                    startCoord, lookVector, upVector, fieldOfView, viewWidth, viewHeight
+                )
+
+                val endScreen = AstronomyUtils.celestialToScreenCoordinates(
+                    endCoord, lookVector, upVector, fieldOfView, viewWidth, viewHeight
+                )
+
+                // Draw line if both points are visible
+                if (startScreen != null && endScreen != null) {
+                    canvas.drawLine(
+                        startScreen.first, startScreen.second,
+                        endScreen.first, endScreen.second,
+                        constellationPaint
+                    )
+
+                    // Track the center for this constellation for label placement
+                    sumX += startScreen.first + endScreen.first
+                    sumY += startScreen.second + endScreen.second
+                    count += 2
+                    isVisible = true
+                }
+            }
+
+            // If this constellation has visible lines, record its center
+            if (isVisible && count > 0) {
+                visibleConstellationCenters[constellation.name] = Pair(sumX / count, sumY / count)
+                pointsCount[constellation.name] = count
+            }
+        }
+
+        // Now draw labels for visible constellations, but only for important ones (rank 1-2)
+        for (constellation in constellations) {
+            if (constellation.rank <= 2) {  // Only label important constellations
+                val center = visibleConstellationCenters[constellation.name] ?: continue
+
+                // Draw constellation name at the calculated center
+                constellationLabelPaint.textSize = when (constellation.rank) {
+                    1 -> 28f  // Major constellations get larger text
+                    else -> 22f
+                }
+
+                canvas.drawText(
+                    constellation.name,
+                    center.first,
+                    center.second,
+                    constellationLabelPaint
+                )
+            }
+        }
     }
 
     /**

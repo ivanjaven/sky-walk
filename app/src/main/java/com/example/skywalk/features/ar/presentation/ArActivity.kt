@@ -48,7 +48,9 @@ class ARActivity : ComponentActivity() {
     private lateinit var previewView: PreviewView
     private lateinit var skyOverlayView: SkyOverlayView
     private lateinit var backButton: ImageButton
-    private lateinit var captureButton: ImageButton  // New capture button
+    private lateinit var captureButton: ImageButton
+    // Add new constellation toggle button
+    private lateinit var constellationToggleButton: ImageButton
 
     // Camera components
     private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
@@ -64,6 +66,9 @@ class ARActivity : ComponentActivity() {
     private val MIN_ZOOM = 0.8f
     private val MAX_ZOOM = 1.5f
     private val ZOOM_SPEED = 0.5f
+
+    // Constellation toggle state
+    private var showConstellations = true
 
     private val requestPermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -109,7 +114,9 @@ class ARActivity : ComponentActivity() {
         previewView = findViewById(R.id.previewView)
         skyOverlayView = findViewById(R.id.skyOverlayView)
         backButton = findViewById(R.id.backButton)
-        captureButton = findViewById(R.id.captureButton)  // Make sure to add this in your layout
+        captureButton = findViewById(R.id.captureButton)
+        // Initialize constellation toggle button
+        constellationToggleButton = findViewById(R.id.constellationToggleButton)
 
         // Initialize ViewModel
         astronomyViewModel = AstronomyViewModel(application)
@@ -133,6 +140,15 @@ class ARActivity : ComponentActivity() {
             checkStoragePermissionAndCapture()
         }
 
+        // Set up constellation toggle button
+        constellationToggleButton.setOnClickListener {
+            showConstellations = !showConstellations
+            astronomyViewModel.toggleConstellationVisibility()
+
+            // Update button appearance based on state
+            updateConstellationButtonAppearance()
+        }
+
         // Check and request camera permission
         checkCameraPermission()
 
@@ -143,6 +159,17 @@ class ARActivity : ComponentActivity() {
                 val longitude = it.getDouble("longitude")
                 astronomyViewModel.setLocation(latitude, longitude)
             }
+        }
+    }
+
+    private fun updateConstellationButtonAppearance() {
+        // Change the button appearance based on state
+        if (showConstellations) {
+            constellationToggleButton.alpha = 1.0f
+            // Optional: change icon or background if needed
+        } else {
+            constellationToggleButton.alpha = 0.5f
+            // Optional: change icon or background if needed
         }
     }
 

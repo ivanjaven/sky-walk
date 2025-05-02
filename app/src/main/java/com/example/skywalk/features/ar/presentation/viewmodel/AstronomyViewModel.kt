@@ -13,8 +13,10 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.skywalk.R
+import com.example.skywalk.features.ar.data.ConstellationRepository
 import com.example.skywalk.features.ar.data.StarRepository
 import com.example.skywalk.features.ar.domain.models.CelestialObject
+import com.example.skywalk.features.ar.domain.models.Constellation
 import com.example.skywalk.features.ar.domain.models.DeviceOrientation
 import com.example.skywalk.features.ar.domain.models.SkyCoordinate
 import com.example.skywalk.features.ar.domain.models.Star
@@ -37,6 +39,7 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
 
     // Repositories
     private val starRepository = StarRepository(application)
+    private val constellationRepository = ConstellationRepository(application) // Add this line
 
     // Sensors
     private val rotationVectorSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
@@ -58,6 +61,14 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _stars = MutableLiveData<List<Star>>()
     val stars: LiveData<List<Star>> = _stars
+
+    // Add constellation LiveData
+    private val _constellations = MutableLiveData<List<Constellation>>()
+    val constellations: LiveData<List<Constellation>> = _constellations
+
+    // Add constellation visibility toggle
+    private val _showConstellations = MutableLiveData(true)
+    val showConstellations: LiveData<Boolean> = _showConstellations
 
     // Sensor data arrays
     private val rotationMatrix = FloatArray(9)
@@ -91,6 +102,11 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
             loadStars()
         }
 
+        // Load constellations in background
+        viewModelScope.launch(Dispatchers.IO) {
+            loadConstellations()
+        }
+
         // Initialize all celestial objects
         initializeCelestialObjects()
         registerSensors()
@@ -110,6 +126,22 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
         } catch (e: Exception) {
             Timber.e(e, "Error loading stars: ${e.message}")
         }
+    }
+
+    // Add this method to load constellations
+    private fun loadConstellations() {
+        try {
+            val constellations = constellationRepository.loadConstellations()
+            _constellations.postValue(constellations)
+            Timber.d("Loaded ${constellations.size} constellations")
+        } catch (e: Exception) {
+            Timber.e(e, "Error loading constellations: ${e.message}")
+        }
+    }
+
+    // Add this method to toggle constellation visibility
+    fun toggleConstellationVisibility() {
+        _showConstellations.value = !(_showConstellations.value ?: true)
     }
 
     private fun initializeCelestialObjects() {

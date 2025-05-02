@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">SkyWalk</string>
     <string name="capture_button">Capture Image</string>
+    <string name="toggle_constellations">Toggle Constellations</string>
 </resources>
