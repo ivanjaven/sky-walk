@@ -141,7 +141,16 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
 
     // Add this method to toggle constellation visibility
     fun toggleConstellationVisibility() {
-        _showConstellations.value = !(_showConstellations.value ?: true)
+        val newValue = !(_showConstellations.value ?: true)
+        _showConstellations.value = newValue
+
+        // If we're turning off constellations, need to force a star redraw to remove HD names
+        if (!newValue) {
+            // Post the same star list to force a redraw
+            _stars.value?.let {
+                _stars.postValue(it)
+            }
+        }
     }
 
     private fun initializeCelestialObjects() {

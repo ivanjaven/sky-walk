@@ -51,6 +51,7 @@ class SkyOverlayView @JvmOverloads constructor(
         color = Color.WHITE
     }
 
+
     private val compassPaint = Paint().apply {
         isAntiAlias = true
         textSize = 32f
@@ -72,15 +73,16 @@ class SkyOverlayView @JvmOverloads constructor(
     private val constellationPaint = Paint().apply {
         isAntiAlias = true
         style = Paint.Style.STROKE
-        strokeWidth = 1.5f
-        color = Color.argb(180, 100, 150, 255) // Soft blue
+        strokeWidth = 3.5f  // INCREASED FROM 1.5f to 3.5f for thicker lines
+        color = Color.argb(220, 100, 150, 255) // Made more opaque (180 to 220)
     }
+
 
     private val constellationLabelPaint = Paint().apply {
         isAntiAlias = true
-        textSize = 24f
-        color = Color.argb(200, 150, 200, 255)
-        setShadowLayer(3f, 0f, 0f, Color.BLACK)
+        textSize = 30f  // INCREASED from 24f to 30f
+        color = Color.argb(230, 150, 200, 255) // Made more opaque (200 to 230)
+        setShadowLayer(4f, 0f, 0f, Color.BLACK)  // Added larger shadow
         textAlign = Paint.Align.CENTER
     }
 
@@ -460,66 +462,72 @@ class SkyOverlayView @JvmOverloads constructor(
             // Set star color based on B-V index
             starPaint.color = star.getStarColor()
 
-            // Determine size based on magnitude
+            // MODIFIED: Determine size based on magnitude - INCREASED all sizes
             val starSize = when {
-                star.magnitude < 0 -> 8f
-                star.magnitude < 1 -> 6f
-                star.magnitude < 2 -> 5f
-                star.magnitude < 3 -> 4f
-                star.magnitude < 4 -> 3f
-                else -> 2f
+                star.magnitude < 0 -> 12f   // Increased from 8f
+                star.magnitude < 1 -> 10f   // Increased from 6f
+                star.magnitude < 2 -> 8f    // Increased from 5f
+                star.magnitude < 3 -> 6.5f  // Increased from 4f
+                star.magnitude < 4 -> 5f    // Increased from 3f
+                else -> 3.5f               // Increased from 2f
             }
 
             // Draw star as circle
             canvas.drawCircle(screenX, screenY, starSize, starPaint)
 
-            // Add "glow" effect for brightest stars
-            if (star.magnitude < 2.0f) {
-                starPaint.alpha = 100  // Semi-transparent
-                canvas.drawCircle(screenX, screenY, starSize * 1.8f, starPaint)
-                starPaint.alpha = 255  // Reset alpha
+            // MODIFIED: Enhanced glow effect for stars
+            if (star.magnitude < 3.0f) {  // Increased from < 2.0f to < 3.0f
+                starPaint.alpha = 150     // Increased from 100 to 150
+                canvas.drawCircle(screenX, screenY, starSize * 2.2f, starPaint)  // Increased from 1.8f to 2.2f
+                starPaint.alpha = 255     // Reset alpha
             }
 
             // Get the name (will be either official name or ID-based name)
             val name = star.getDisplayName()
             val isOfficialName = star.name != null
 
-            // Set text size based on magnitude and whether it's an official name
-            textPaint.textSize = when {
-                isOfficialName && star.magnitude < 0 -> 28f
-                isOfficialName && star.magnitude < 1 -> 26f
-                isOfficialName && star.magnitude < 2 -> 24f
-                isOfficialName && star.magnitude < 3 -> 22f
-                isOfficialName -> 20f
-                star.magnitude < 1 -> 16f // Smaller size for catalog names of bright stars
-                star.magnitude < 3 -> 14f // Even smaller for catalog names of dimmer stars
-                else -> 12f // Very small for dim stars
+            // MODIFICATION: Only draw HD/catalog names when constellations are visible
+            // Always show official names, but only show HD/catalog names when showConstellations is true
+            if (isOfficialName || showConstellations) {
+                // Set text size based on magnitude and whether it's an official name
+                textPaint.textSize = when {
+                    isOfficialName && star.magnitude < 0 -> 32f   // Increased from 28f
+                    isOfficialName && star.magnitude < 1 -> 30f   // Increased from 26f
+                    isOfficialName && star.magnitude < 2 -> 28f   // Increased from 24f
+                    isOfficialName && star.magnitude < 3 -> 26f   // Increased from 22f
+                    isOfficialName -> 24f                        // Increased from 20f
+                    star.magnitude < 1 -> 16f  // Keep sizes for HD/catalog names
+                    star.magnitude < 3 -> 14f
+                    else -> 12f
+                }
+
+                // Adjust alpha (transparency) based on brightness and name type
+                val alpha = when {
+                    isOfficialName && star.magnitude < 1 -> 255
+                    isOfficialName && star.magnitude < 2 -> 230
+                    isOfficialName && star.magnitude < 3 -> 200
+                    isOfficialName -> 180
+                    showConstellations && star.magnitude < 1 -> 160  // Only show if constellations active
+                    showConstellations && star.magnitude < 2 -> 140  // Only show if constellations active
+                    showConstellations && star.magnitude < 3 -> 120  // Only show if constellations active
+                    else -> 0  // Hide catalog names when constellations are off
+                }
+
+                textPaint.alpha = alpha
+
+                // Draw star name only if alpha > 0
+                if (alpha > 0) {
+                    canvas.drawText(
+                        name,
+                        screenX,
+                        screenY + starSize + 15f,
+                        textPaint
+                    )
+                }
+
+                // Reset alpha
+                textPaint.alpha = 255
             }
-
-            // Adjust alpha (transparency) based on brightness and name type
-            val alpha = when {
-                isOfficialName && star.magnitude < 1 -> 255
-                isOfficialName && star.magnitude < 2 -> 230
-                isOfficialName && star.magnitude < 3 -> 200
-                isOfficialName -> 180
-                star.magnitude < 1 -> 160 // More transparent for catalog names
-                star.magnitude < 2 -> 140
-                star.magnitude < 3 -> 120
-                else -> 100
-            }
-
-            textPaint.alpha = alpha
-
-            // Draw star name
-            canvas.drawText(
-                name,
-                screenX,
-                screenY + starSize + 15f,
-                textPaint
-            )
-
-            // Reset alpha
-            textPaint.alpha = 255
         }
     }
 

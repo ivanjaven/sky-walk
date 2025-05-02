@@ -81,6 +81,8 @@ data class Star(
     }
 
     // Calculate star color based on B-V color index
+    // In the Star.kt file - update the getStarColor() method to make stars brighter
+
     fun getStarColor(): Int {
         // If no color index, use magnitude to make an educated guess
         val index = colorIndex ?: when {
@@ -89,27 +91,28 @@ data class Star(
             else -> 1.0f          // Dimmer stars often orange-red
         }
 
+        // MODIFIED: Brightened all color values
         return when {
-            index < -0.1f -> Color.rgb(155, 176, 255)  // Blue (O type)
-            index < 0.0f -> Color.rgb(170, 191, 255)   // Blue-white (B type)
-            index < 0.3f -> Color.rgb(202, 215, 255)   // White (A type)
-            index < 0.5f -> Color.rgb(248, 247, 255)   // Yellow-white (F type)
-            index < 0.8f -> Color.rgb(255, 244, 234)   // Yellow (G type)
-            index < 1.4f -> Color.rgb(255, 210, 161)   // Orange (K type)
-            else -> Color.rgb(255, 204, 111)           // Red (M type)
+            index < -0.1f -> Color.rgb(175, 196, 255)  // Brightened from (155, 176, 255)
+            index < 0.0f -> Color.rgb(190, 211, 255)   // Brightened from (170, 191, 255)
+            index < 0.3f -> Color.rgb(232, 235, 255)   // Brightened from (202, 215, 255)
+            index < 0.5f -> Color.rgb(255, 252, 235)   // Brightened from (248, 247, 235)
+            index < 0.8f -> Color.rgb(255, 250, 234)   // Brightened from (255, 244, 214)
+            index < 1.4f -> Color.rgb(255, 230, 181)   // Brightened from (255, 210, 161)
+            else -> Color.rgb(255, 224, 131)           // Brightened from (255, 204, 111)
         }
     }
 
-    // Get the appropriate size scale based on magnitude
+    // Update the getSizeScale() method to make stars appear larger
     fun getSizeScale(): Float {
         // For very bright stars, make them much larger
         return when {
-            magnitude < 0f -> 3.5f
-            magnitude < 1f -> 3.0f
-            magnitude < 2f -> 2.5f
-            magnitude < 3f -> 2.0f
-            magnitude < 4f -> 1.5f
-            else -> 1.0f
+            magnitude < 0f -> 4.5f  // Increased from 3.5f
+            magnitude < 1f -> 4.0f  // Increased from 3.0f
+            magnitude < 2f -> 3.5f  // Increased from 2.5f
+            magnitude < 3f -> 3.0f  // Increased from 2.0f
+            magnitude < 4f -> 2.5f  // Increased from 1.5f
+            else -> 1.5f            // Increased from 1.0f
         }
     }
 
