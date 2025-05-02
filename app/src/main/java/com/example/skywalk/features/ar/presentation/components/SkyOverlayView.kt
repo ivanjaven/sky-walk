@@ -431,9 +431,6 @@ class SkyOverlayView @JvmOverloads constructor(
     ) {
         if (stars.isEmpty()) return
 
-        // Track which stars we've labeled (to avoid crowding)
-        val labeledStars = mutableListOf<Star>()
-
         // Process stars
         for (star in stars) {
             // Convert from equatorial (RA/Dec) to horizontal coordinates (Az/Alt)
@@ -483,21 +480,46 @@ class SkyOverlayView @JvmOverloads constructor(
                 starPaint.alpha = 255  // Reset alpha
             }
 
-            // Label only the brightest stars and limit number to avoid cluttering
-            if (SHOW_STAR_NAMES && star.magnitude < 2.0f && labeledStars.size < MAX_LABELED_STARS) {
-                // Only label if there's a name
-                val name = star.getDisplayName()
-                if (name.isNotEmpty()) {
-                    textPaint.textSize = 24f
-                    canvas.drawText(
-                        name,
-                        screenX,
-                        screenY + starSize + 15f,
-                        textPaint
-                    )
-                    labeledStars.add(star)
-                }
+            // Get the name (will be either official name or ID-based name)
+            val name = star.getDisplayName()
+            val isOfficialName = star.name != null
+
+            // Set text size based on magnitude and whether it's an official name
+            textPaint.textSize = when {
+                isOfficialName && star.magnitude < 0 -> 28f
+                isOfficialName && star.magnitude < 1 -> 26f
+                isOfficialName && star.magnitude < 2 -> 24f
+                isOfficialName && star.magnitude < 3 -> 22f
+                isOfficialName -> 20f
+                star.magnitude < 1 -> 16f // Smaller size for catalog names of bright stars
+                star.magnitude < 3 -> 14f // Even smaller for catalog names of dimmer stars
+                else -> 12f // Very small for dim stars
             }
+
+            // Adjust alpha (transparency) based on brightness and name type
+            val alpha = when {
+                isOfficialName && star.magnitude < 1 -> 255
+                isOfficialName && star.magnitude < 2 -> 230
+                isOfficialName && star.magnitude < 3 -> 200
+                isOfficialName -> 180
+                star.magnitude < 1 -> 160 // More transparent for catalog names
+                star.magnitude < 2 -> 140
+                star.magnitude < 3 -> 120
+                else -> 100
+            }
+
+            textPaint.alpha = alpha
+
+            // Draw star name
+            canvas.drawText(
+                name,
+                screenX,
+                screenY + starSize + 15f,
+                textPaint
+            )
+
+            // Reset alpha
+            textPaint.alpha = 255
         }
     }
 

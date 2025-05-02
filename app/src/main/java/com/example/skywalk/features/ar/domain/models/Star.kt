@@ -13,23 +13,54 @@ data class Star(
     companion object {
         // Common bright star names
         private val BRIGHT_STAR_NAMES = mapOf(
-            // Brightest stars
+            // First magnitude stars (brightest)
             32349 to "Sirius",
             27989 to "Canopus",
             91262 to "Vega",
             113368 to "Arcturus",
-            87937 to "Barnard's Star",
             24608 to "Capella",
             37279 to "Rigel",
-            32349 to "Sirius",
             30438 to "Betelgeuse",
             37826 to "Procyon",
             69673 to "Altair",
             7001 to "Achernar",
             58001 to "Antares",
             97649 to "Deneb",
-            78401 to "Fomalhaut"
-            // Could add more as needed
+            78401 to "Fomalhaut",
+
+            // Second magnitude stars
+            67301 to "Pollux",
+            21421 to "Aldebaran",
+            80763 to "Spica",
+            65474 to "Regulus",
+            80816 to "Castor",
+            71683 to "Shaula",
+            2081 to "Bellatrix",
+            90185 to "Elnath",
+            109268 to "Alnilam",
+            92855 to "Miaplacidus",
+            30324 to "Alnair",
+            15863 to "Alnitak",
+
+            // Third magnitude stars
+            85927 to "Polaris",
+            46390 to "Mimosa",
+            5447 to "Albireo",
+            68702 to "Alioth",
+            72607 to "Dubhe",
+            75097 to "Merak",
+            67301 to "Phecda",
+            54061 to "Megrez",
+            53910 to "Alkaid",
+            85822 to "Mizar",
+            86032 to "Alcor",
+            83895 to "Izar",
+            67927 to "Mirach",
+            21421 to "Alphecca",
+            110893 to "Kochab",
+            105199 to "Alderamin",
+            102098 to "Scheat",
+            677 to "Alpheratz"
         )
 
         // Create star from GeoJSON feature
@@ -46,7 +77,7 @@ data class Star(
 
     // Get display name (use known name or empty)
     fun getDisplayName(): String {
-        return name ?: ""
+        return name ?: "HD-$id" // Return ID-based name if no official name exists
     }
 
     // Calculate star color based on B-V color index
