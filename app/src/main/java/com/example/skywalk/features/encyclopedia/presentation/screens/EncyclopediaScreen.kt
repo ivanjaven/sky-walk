@@ -70,15 +70,15 @@ fun EncyclopediaScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 8.dp) // Reduced from 16.dp to allow cards more space
     ) {
-        // Search bar
+        // Search bar - keep padding but make it more compact
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { viewModel.search(it) },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 16.dp),
+                .padding(vertical = 12.dp), // Reduced from 16.dp
             placeholder = { Text("Search celestial objects") },
             leadingIcon = {
                 Icon(
@@ -105,12 +105,12 @@ fun EncyclopediaScreen(
             )
         )
 
-        // Categories row
+        // Category chips - adjust horizontal spacing for better density
         LazyRow(
             state = listState,
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp), // Reduced from 8.dp
+            contentPadding = PaddingValues(vertical = 6.dp) // Reduced from 8.dp
         ) {
             item {
                 CategoryChip(
@@ -158,7 +158,12 @@ fun EncyclopediaScreen(
                         } else {
                             LazyVerticalGrid(
                                 columns = GridCells.Fixed(2),
-                                contentPadding = PaddingValues(vertical = 8.dp),
+                                contentPadding = PaddingValues(
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    top = 8.dp,
+                                    bottom = 16.dp // Reduce this value from what might be a larger value
+                                ),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(16.dp),
                                 modifier = Modifier.fillMaxSize()

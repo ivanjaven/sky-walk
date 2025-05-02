@@ -84,13 +84,13 @@ fun CelestialObjectCard(
                 // Type badge
                 Surface(
                     shape = RoundedCornerShape(4.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = MaterialTheme.colorScheme.primary, // Use primary color instead of container with alpha
+                    contentColor = MaterialTheme.colorScheme.onPrimary, // Use onPrimary for better contrast
                     modifier = Modifier.wrapContentWidth()
                 ) {
                     Text(
                         text = celestialObject.type.name.replace("_", " "),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), // Make it bold
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -100,7 +100,7 @@ fun CelestialObjectCard(
             if (celestialObject.visibility?.isVisibleToNakedEye == true) {
                 Surface(
                     shape = RoundedCornerShape(4.dp),
-                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.secondary, // Remove alpha
                     contentColor = MaterialTheme.colorScheme.onSecondary,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -108,7 +108,7 @@ fun CelestialObjectCard(
                 ) {
                     Text(
                         text = "Visible",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), // Make it bold
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
