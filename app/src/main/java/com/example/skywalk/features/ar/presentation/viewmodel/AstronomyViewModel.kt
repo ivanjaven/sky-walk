@@ -88,8 +88,8 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
     private var currentZoom = 1.0f
 
     // User location
-    private var latitude = 34.0522  // Default: Los Angeles
-    private var longitude = -118.2437
+    private var latitude = 15.1840  // Default: Clark, Pampanga, Philippines
+    private var longitude = 120.5560
 
     // Scheduling and time
     private val scheduler: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
