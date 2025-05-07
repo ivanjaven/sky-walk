@@ -143,44 +143,48 @@ object AstronomyUtils {
         screenWidth: Int,
         screenHeight: Int
     ): Pair<Float, Float>? {
-        // Convert sky coordinate to a unit vector
-        val objectVector = Vector3.fromSpherical(
-            skyCoordinate.rightAscension * DEGREES_TO_RADIANS,
-            skyCoordinate.declination * DEGREES_TO_RADIANS
-        )
+        // Convert horizontal coordinates (Azimuth = skyCoordinate.rightAscension, Altitude = skyCoordinate.declination) to radians
+        val azRad = skyCoordinate.rightAscension * DEGREES_TO_RADIANS
+        val elRad = skyCoordinate.declination   * DEGREES_TO_RADIANS
 
-        // We need the right vector to complete the device's coordinate system
+        // Build the object vector so that 0° = North (+Y), 90° = East (+X)
+        val objectVector = Vector3(
+            x = cos(elRad) * sin(azRad),
+            y = cos(elRad) * cos(azRad),
+            z = sin(elRad)
+        ).normalize()
+
+        // Complete the device’s coordinate system
         val deviceRightVector = deviceLookVector.cross(deviceUpVector).normalize()
 
-        // Calculate the dot product to determine if the object is in front
+        // Dot with look vector tells us if it’s in front
         val lookDot = deviceLookVector.dot(objectVector)
-
-        // Only show objects in front of the camera
         if (lookDot > 0) {
-            // Calculate projection onto the view plane
-            val viewPlaneVector = objectVector.minus(deviceLookVector.times(lookDot))
+            // Project onto the view plane
+            val viewPlaneVector = objectVector - deviceLookVector * lookDot
 
-            // Project this difference onto our right and up vectors
+            // Decompose into right/up components
             val rightComponent = viewPlaneVector.dot(deviceRightVector)
-            val upComponent = viewPlaneVector.dot(deviceUpVector)
+            val upComponent    = viewPlaneVector.dot(deviceUpVector)
 
-            // Account for perspective projection
-            val tanFov = tan(fieldOfView / 2f)
+            // Perspective scaling
+            val tanFov      = tan(fieldOfView / 2f)
             val aspectRatio = screenWidth.toFloat() / screenHeight.toFloat()
-
-            // The scaling factor for projection
             val scaleFactor = 1f / tanFov
 
-            // Calculate screen position
-            val screenX = screenWidth / 2f + rightComponent * scaleFactor * screenWidth / 2f / aspectRatio
-            val screenY = screenHeight / 2f - upComponent * scaleFactor * screenHeight / 2f
+            // Map to screen coordinates
+            val screenX = screenWidth  / 2f +
+                    rightComponent * scaleFactor * screenWidth  / 2f / aspectRatio
+            val screenY = screenHeight / 2f -
+                    upComponent    * scaleFactor * screenHeight / 2f
 
             return Pair(screenX, screenY)
         }
 
-        // Object is behind us
+        // Behind the camera
         return null
     }
+
 
     // Calculate the Sun's position using a more accurate algorithm
     fun calculateSunPosition(date: Date, latitude: Float, longitude: Float): SkyCoordinate {
