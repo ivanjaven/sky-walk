@@ -29,7 +29,7 @@ object AstronomyUtils {
 
     // Calculate Julian Day - crucial for accurate astronomical calculations
     fun julianDay(date: Date): Double {
-        val cal = java.util.Calendar.getInstance()
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
         cal.time = date
 
         val year = cal[java.util.Calendar.YEAR]
