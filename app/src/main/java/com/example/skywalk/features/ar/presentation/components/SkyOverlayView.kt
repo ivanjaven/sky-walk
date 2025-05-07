@@ -664,6 +664,7 @@ class SkyOverlayView @JvmOverloads constructor(
     /**
      * Draw stars on the canvas
      */
+    // In SkyOverlayView.kt, update the drawStars method:
     private fun drawStars(
         canvas: Canvas,
         lookVector: Vector3,
@@ -703,8 +704,11 @@ class SkyOverlayView @JvmOverloads constructor(
             // Set star color based on B-V index
             starPaint.color = star.getStarColor()
 
+            // Is this star focused?
+            val isFocused = (star == focusedStar)
+
             // Check if this is the focused star
-            if (star == focusedStar) {
+            if (isFocused) {
                 // Save original paint settings
                 val originalColor = starPaint.color
                 val originalStyle = starPaint.style
@@ -734,7 +738,7 @@ class SkyOverlayView @JvmOverloads constructor(
                 starPaint.alpha = originalAlpha
             }
 
-            // Determine size based on magnitude - INCREASED all sizes
+            // Determine size based on magnitude
             val starSize = when {
                 star.magnitude < 0 -> 12f
                 star.magnitude < 1 -> 10f
@@ -760,30 +764,30 @@ class SkyOverlayView @JvmOverloads constructor(
             // Check if this star has an important name (proper name or Bayer designation)
             val isImportantStar = star.isNamedStar()
 
-            // Only show names for important stars or when constellations are visible
-            if (isImportantStar || showConstellations) {
-                // Set text size based on magnitude and whether it's an important star
+            // MODIFIED: Only show star names for:
+            // 1. Important stars with proper names (like Sirius, Vega)
+            // 2. OR focused stars (when user is actively looking at them)
+            // 3. AND only bright stars (mag < 3) to keep the display clean
+            val shouldShowName = (isImportantStar && star.magnitude < 3.0f) || isFocused
+
+            if (shouldShowName) {
+                // Set text size based on magnitude and whether it's an important star or focused
                 textPaint.textSize = when {
+                    isFocused -> 28f // Highlight focused stars with larger text
                     isImportantStar && star.magnitude < 0 -> 32f
                     isImportantStar && star.magnitude < 1 -> 30f
                     isImportantStar && star.magnitude < 2 -> 28f
                     isImportantStar && star.magnitude < 3 -> 26f
-                    isImportantStar -> 24f
-                    star.magnitude < 1 -> 16f
-                    star.magnitude < 3 -> 14f
-                    else -> 12f
+                    else -> 24f
                 }
 
-                // Adjust alpha (transparency) based on brightness and name type
+                // Adjust alpha (transparency) based on whether star is focused
                 val alpha = when {
+                    isFocused -> 255 // Always fully visible when focused
                     isImportantStar && star.magnitude < 1 -> 255
                     isImportantStar && star.magnitude < 2 -> 230
                     isImportantStar && star.magnitude < 3 -> 200
-                    isImportantStar -> 180
-                    showConstellations && star.magnitude < 1 -> 160
-                    showConstellations && star.magnitude < 2 -> 140
-                    showConstellations && star.magnitude < 3 -> 120
-                    else -> 0  // Hide catalog names when constellations are off
+                    else -> 0 // Hide all other star names
                 }
 
                 textPaint.alpha = alpha
@@ -955,10 +959,11 @@ class SkyOverlayView @JvmOverloads constructor(
             val longitude = viewModel?.getLongitude() ?: 0f
             val lst = AstronomyUtils.calculateSiderealTime(currentDate, longitude)
 
-            // Only check bright stars for performance (mag < 4)
-            val brightStars = stars.filter { it.magnitude < 4.0f }
+            // Check stars for focus - include stars up to magnitude 5
+            // This lets users focus on dimmer stars too, not just the bright ones
+            val visibleStars = stars.filter { it.magnitude < 5.0f }
 
-            for (star in brightStars) {
+            for (star in visibleStars) {
                 val horizontalCoord = AstronomyUtils.equatorialToHorizontal(
                     star.skyCoordinate.rightAscension,
                     star.skyCoordinate.declination,
@@ -992,8 +997,10 @@ class SkyOverlayView @JvmOverloads constructor(
                             // Try to get description for named star
                             starDescriptions[starName] ?: "A bright star with magnitude ${String.format("%.1f", star.magnitude)}"
                         } else {
-                            // Generic description for catalog star
-                            "Star with magnitude ${String.format("%.1f", star.magnitude)}"
+                            // More detailed description for focused stars without proper names
+                            val constellation = star.starName?.constellation?.let { " in $it" } ?: ""
+                            val bayer = star.starName?.bayerDesignation?.let { " ($it)" } ?: ""
+                            "Star$bayer$constellation with magnitude ${String.format("%.1f", star.magnitude)}"
                         }
 
                         notifyObjectInfoListeners(star, starName, description)
