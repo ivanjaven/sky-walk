@@ -14,6 +14,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.skywalk.R
 import com.example.skywalk.features.ar.data.ConstellationRepository
+import com.example.skywalk.features.ar.data.StarNameRepository
 import com.example.skywalk.features.ar.data.StarRepository
 import com.example.skywalk.features.ar.domain.models.CelestialObject
 import com.example.skywalk.features.ar.domain.models.Constellation
@@ -39,7 +40,8 @@ class AstronomyViewModel(application: Application) : AndroidViewModel(applicatio
 
     // Repositories
     private val starRepository = StarRepository(application)
-    private val constellationRepository = ConstellationRepository(application) // Add this line
+    private val constellationRepository = ConstellationRepository(application)
+    private val starNameRepository = StarNameRepository(application)
 
     // Sensors
     private val rotationVectorSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)

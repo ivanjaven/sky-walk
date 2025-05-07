@@ -138,7 +138,14 @@ class SkyOverlayView @JvmOverloads constructor(
         "Spica" to "The brightest star in Virgo, a binary star system 250 light-years from Earth.",
         "Pollux" to "The brightest star in Gemini, an orange-hued giant 34 light-years from Earth.",
         "Fomalhaut" to "The 18th brightest star, with a confirmed exoplanet, in Piscis Austrinus.",
-        "Polaris" to "The North Star, used for navigation for centuries, in Ursa Minor."
+        "Polaris" to "The North Star, used for navigation for centuries, in Ursa Minor.",
+        "Aldebaran" to "The brightest star in Taurus, an orange giant about 65 light-years from Earth.",
+        "Castor" to "A sextuple star system in Gemini, about 52 light-years from Earth.",
+        "Achernar" to "The ninth-brightest star in the night sky, in Eridanus, 139 light-years away.",
+        "Hadar" to "Also known as Beta Centauri, the 11th brightest star, 525 light-years from Earth.",
+        "Acrux" to "The brightest star in the Southern Cross (Crux), 320 light-years from Earth.",
+        "Mizar" to "A famous double star in Ursa Major, part of the Big Dipper's handle.",
+        "α Cen" to "Alpha Centauri, the closest star system to our Solar System at 4.37 light-years."
     )
 
     private val constellationDescriptions = mapOf(
@@ -709,14 +716,14 @@ class SkyOverlayView @JvmOverloads constructor(
                 starPaint.color = Color.YELLOW
                 starPaint.alpha = 200
 
-                // MODIFIED: Determine size based on magnitude
+                // Determine size based on magnitude
                 val starSize = when {
-                    star.magnitude < 0 -> 12f   // Increased from 8f
-                    star.magnitude < 1 -> 10f   // Increased from 6f
-                    star.magnitude < 2 -> 8f    // Increased from 5f
-                    star.magnitude < 3 -> 6.5f  // Increased from 4f
-                    star.magnitude < 4 -> 5f    // Increased from 3f
-                    else -> 3.5f               // Increased from 2f
+                    star.magnitude < 0 -> 12f
+                    star.magnitude < 1 -> 10f
+                    star.magnitude < 2 -> 8f
+                    star.magnitude < 3 -> 6.5f
+                    star.magnitude < 4 -> 5f
+                    else -> 3.5f
                 }
 
                 canvas.drawCircle(screenX, screenY, starSize * 2.5f, starPaint)
@@ -727,54 +734,55 @@ class SkyOverlayView @JvmOverloads constructor(
                 starPaint.alpha = originalAlpha
             }
 
-            // MODIFIED: Determine size based on magnitude - INCREASED all sizes
+            // Determine size based on magnitude - INCREASED all sizes
             val starSize = when {
-                star.magnitude < 0 -> 12f   // Increased from 8f
-                star.magnitude < 1 -> 10f   // Increased from 6f
-                star.magnitude < 2 -> 8f    // Increased from 5f
-                star.magnitude < 3 -> 6.5f  // Increased from 4f
-                star.magnitude < 4 -> 5f    // Increased from 3f
-                else -> 3.5f               // Increased from 2f
+                star.magnitude < 0 -> 12f
+                star.magnitude < 1 -> 10f
+                star.magnitude < 2 -> 8f
+                star.magnitude < 3 -> 6.5f
+                star.magnitude < 4 -> 5f
+                else -> 3.5f
             }
 
             // Draw star as circle
             canvas.drawCircle(screenX, screenY, starSize, starPaint)
 
-            // MODIFIED: Enhanced glow effect for stars
-            if (star.magnitude < 3.0f) {  // Increased from < 2.0f to < 3.0f
-                starPaint.alpha = 150     // Increased from 100 to 150
-                canvas.drawCircle(screenX, screenY, starSize * 2.2f, starPaint)  // Increased from 1.8f to 2.2f
-                starPaint.alpha = 255     // Reset alpha
+            // Enhanced glow effect for stars
+            if (star.magnitude < 3.0f) {
+                starPaint.alpha = 150
+                canvas.drawCircle(screenX, screenY, starSize * 2.2f, starPaint)
+                starPaint.alpha = 255
             }
 
-            // Get the name (will be either official name or ID-based name)
+            // Get the display name
             val name = star.getDisplayName()
-            val isOfficialName = star.name != null
 
-            // MODIFICATION: Only draw HD/catalog names when constellations are visible
-            // Always show official names, but only show HD/catalog names when showConstellations is true
-            if (isOfficialName || showConstellations) {
-                // Set text size based on magnitude and whether it's an official name
+            // Check if this star has an important name (proper name or Bayer designation)
+            val isImportantStar = star.isNamedStar()
+
+            // Only show names for important stars or when constellations are visible
+            if (isImportantStar || showConstellations) {
+                // Set text size based on magnitude and whether it's an important star
                 textPaint.textSize = when {
-                    isOfficialName && star.magnitude < 0 -> 32f   // Increased from 28f
-                    isOfficialName && star.magnitude < 1 -> 30f   // Increased from 26f
-                    isOfficialName && star.magnitude < 2 -> 28f   // Increased from 24f
-                    isOfficialName && star.magnitude < 3 -> 26f   // Increased from 22f
-                    isOfficialName -> 24f                        // Increased from 20f
-                    star.magnitude < 1 -> 16f  // Keep sizes for HD/catalog names
+                    isImportantStar && star.magnitude < 0 -> 32f
+                    isImportantStar && star.magnitude < 1 -> 30f
+                    isImportantStar && star.magnitude < 2 -> 28f
+                    isImportantStar && star.magnitude < 3 -> 26f
+                    isImportantStar -> 24f
+                    star.magnitude < 1 -> 16f
                     star.magnitude < 3 -> 14f
                     else -> 12f
                 }
 
                 // Adjust alpha (transparency) based on brightness and name type
                 val alpha = when {
-                    isOfficialName && star.magnitude < 1 -> 255
-                    isOfficialName && star.magnitude < 2 -> 230
-                    isOfficialName && star.magnitude < 3 -> 200
-                    isOfficialName -> 180
-                    showConstellations && star.magnitude < 1 -> 160  // Only show if constellations active
-                    showConstellations && star.magnitude < 2 -> 140  // Only show if constellations active
-                    showConstellations && star.magnitude < 3 -> 120  // Only show if constellations active
+                    isImportantStar && star.magnitude < 1 -> 255
+                    isImportantStar && star.magnitude < 2 -> 230
+                    isImportantStar && star.magnitude < 3 -> 200
+                    isImportantStar -> 180
+                    showConstellations && star.magnitude < 1 -> 160
+                    showConstellations && star.magnitude < 2 -> 140
+                    showConstellations && star.magnitude < 3 -> 120
                     else -> 0  // Hide catalog names when constellations are off
                 }
 
@@ -980,11 +988,11 @@ class SkyOverlayView @JvmOverloads constructor(
                         focusedConstellation = null
 
                         val starName = star.getDisplayName()
-                        val description = if (star.name != null) {
-                            // Known star with proper name
+                        val description = if (star.isNamedStar()) {
+                            // Try to get description for named star
                             starDescriptions[starName] ?: "A bright star with magnitude ${String.format("%.1f", star.magnitude)}"
                         } else {
-                            // Catalog star without proper name
+                            // Generic description for catalog star
                             "Star with magnitude ${String.format("%.1f", star.magnitude)}"
                         }
 

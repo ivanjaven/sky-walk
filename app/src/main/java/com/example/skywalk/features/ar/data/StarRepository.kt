@@ -9,6 +9,8 @@ import java.io.InputStreamReader
 import kotlin.math.min
 
 class StarRepository(private val context: Context) {
+    // Add star name repository
+    private val starNameRepository = StarNameRepository(context)
 
     // Cache loaded stars to avoid repeated processing
     private var cachedStars: List<Star>? = null
@@ -23,6 +25,9 @@ class StarRepository(private val context: Context) {
         cachedStars?.let { return it }
 
         try {
+            // Load star names first
+            val starNames = starNameRepository.loadStarNames()
+
             // Load the GeoJSON from assets folder
             val inputStream = context.assets.open("stars.json")
             val reader = InputStreamReader(inputStream)
@@ -63,8 +68,11 @@ class StarRepository(private val context: Context) {
                 val ra = coordinates.get(0).asFloat
                 val dec = coordinates.get(1).asFloat
 
-                // Create and add star
-                stars.add(Star.fromGeoJsonFeature(id, magnitude, colorIndex, ra, dec))
+                // Look up the star name from our repository
+                val starName = starNames[id]
+
+                // Create and add star with name data
+                stars.add(Star.fromGeoJsonFeature(id, magnitude, colorIndex, ra, dec, starName))
             }
 
             reader.close()
@@ -110,5 +118,6 @@ class StarRepository(private val context: Context) {
      */
     fun clearCache() {
         cachedStars = null
+        starNameRepository.clearCache()
     }
 }
